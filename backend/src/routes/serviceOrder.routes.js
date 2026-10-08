@@ -7,6 +7,7 @@ router.post('/', c.create);
 router.get('/', c.list);
 router.get('/customers/search', c.searchCustomers);
 router.get('/:id', c.get);
+router.get('/:id/pdf', c.getPdf);
 router.put('/:id', c.update);
 router.patch('/:id/status', c.updateStatus);
 router.patch('/:id/parts', c.updateParts);

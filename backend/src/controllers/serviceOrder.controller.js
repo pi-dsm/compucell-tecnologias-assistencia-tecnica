@@ -2,6 +2,7 @@ const ServiceOrder = require('../models/ServiceOrder');
 const { STATUSES, METHODS } = require('../models/ServiceOrder');
 const { asyncHandler, clean, pick, escapeRegex } = require('../utils/helpers');
 const { round2, formatBRL } = require('../utils/money');
+const PDFDocument = require('pdfkit');
 
 const findOrder = async (id, res) => {
   const order = await ServiceOrder.findById(id);
@@ -9,16 +10,74 @@ const findOrder = async (id, res) => {
   return order;
 };
 
+const COMPANY = {
+  name: 'Nardelli Assistência Técnica e Comércio',
+  cnpj: '12.345.678/0001-90',
+  contact: 'WhatsApp / Contato: (14) 99999-9999 | Jaú - SP',
+};
+
+function generatePDFBuffer(order) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks = [];
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.fontSize(16).font('Helvetica-Bold').text(COMPANY.name, { align: 'center' });
+    doc.fontSize(10).font('Helvetica').text(`CNPJ: ${COMPANY.cnpj}`, { align: 'center' });
+    doc.text(COMPANY.contact, { align: 'center' });
+    doc.moveDown(1);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.moveDown(1);
+
+    doc.fontSize(14).font('Helvetica-Bold').text(`Comprovante de Entrada - OS #${order.service_order_number}`, { align: 'center' });
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica-Bold').text('Cliente');
+    doc.fontSize(10).font('Helvetica');
+    doc.text(`Nome: ${order.customer.customer_name}`);
+    doc.text(`Telefone: ${order.customer.customer_phone}`);
+    doc.text(`Telefone de Contato: ${order.customer.customer_alternative_phone || '—'}`);
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica-Bold').text('Dispositivo');
+    doc.fontSize(10).font('Helvetica');
+    doc.text(`Tipo: ${order.device.device_type}`);
+    doc.text(`Modelo: ${order.device.device_brand} ${order.device.device_model}`);
+    doc.text(`Problema Detectado: ${order.reported_issue}`);
+    doc.text(`Previsão de Orçamento: ${order.estimated_budget_days || 1} dia(s) útil(eis)`);
+    doc.moveDown(1);
+
+    doc.fontSize(9).font('Helvetica-BoldOblique').fillColor('red').text(
+      'Atenção: Conforme legislação vigente, dispositivos não retirados no prazo de 30 (trinta) dias após a conclusão do serviço ou notificação do orçamento estarão sujeitos a cobrança de taxa de permanência ou alienação para cobertura de custos operacionais.',
+      { align: 'justify' }
+    );
+    doc.fillColor('black');
+    doc.moveDown(3);
+
+    doc.fontSize(10).font('Helvetica').text('_____________________________________________');
+    doc.text('Assinatura do Cliente');
+
+    doc.end();
+  });
+}
+exports.generatePDFBuffer = generatePDFBuffer;
+
 exports.create = asyncHandler(async (req, res) => {
   const b = clean(req.body);
   const order = new ServiceOrder({
-    ...pick(b, ['customer', 'device', 'reported_issue', 'physical_condition', 'passcode', 'acessories_left_behind', 'estimated_delivery_at', 'labor_total_amount', 'discount_amount', 'internal_notes']),
+    ...pick(b, ['customer', 'device', 'reported_issue', 'physical_condition', 'passcode', 'acessories_left_behind', 'estimated_delivery_at', 'labor_total_amount', 'discount_amount', 'internal_notes', 'estimated_budget_days']),
     service_order_number: await ServiceOrder.nextNumber(),
     created_by: req.user._id,
     updated_by: req.user._id,
   });
   await order.save();
-  res.status(201).json(order);
+  const pdfBuffer = await generatePDFBuffer(order);
+  res.status(201).json({
+    ...order.toJSON(),
+    pdfBase64: pdfBuffer.toString('base64'),
+  });
 });
 
 exports.list = asyncHandler(async (req, res) => {
@@ -139,4 +198,15 @@ exports.remove = asyncHandler(async (req, res) => {
   order.updated_by = req.user._id;
   await order.save();
   res.json(order);
+});
+
+exports.getPdf = asyncHandler(async (req, res) => {
+  const order = await ServiceOrder.findById(req.params.id);
+  if (!order) return res.status(404).json({ message: 'Ordem de serviço não encontrada' });
+  const pdfBuffer = await generatePDFBuffer(order);
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="OS-${order.service_order_number}.pdf"`,
+  });
+  res.send(pdfBuffer);
 });
