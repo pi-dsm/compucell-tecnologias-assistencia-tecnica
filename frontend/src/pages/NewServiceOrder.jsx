@@ -1,34 +1,55 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Download, FileText, Printer, X } from 'lucide-react';
+import { Check, Download, Eraser, FileText, Printer, X } from 'lucide-react';
 import api, { errMsg } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import { btnGhost, btnPrimary, Card, Field, inputCls, Modal } from '../components/ui';
 
 const DEVICE_TYPES = ['Celular', 'Tablet', 'Notebook', 'Computador', 'Console', 'Smartwatch', 'TV', 'Outro'];
 
+const PASSWORD_TYPES = [
+  { value: 'none', label: 'Nenhuma' },
+  { value: 'pin', label: 'PIN' },
+  { value: 'written', label: 'Texto' },
+  { value: 'pattern', label: 'Padrão' },
+];
+
 const initial = {
-  customer_id: '', customer_name: '', customer_phone: '', customer_alt: '',
-  device_type: 'Celular', device_brand: '', device_model: '',
-  reported_issue: '', passcode_pin: '', passcode_written: '', estimated_budget_days: 1,
+  customer_id: '', customer_name: '', customer_phone: '', customer_alternative_phone: '',
+  device_type: 'Celular', device_brand: '', device_model: '', reported_issue: '', estimated_budget_days: 1, estimated_delivery_at: '',
+  passcode_type: 'none', passcode_pin: '', passcode_written: '', passcode_pattern: []
 };
 
 function PatternPad({ value, onChange }) {
   const points = [0, 1, 2, 3, 4, 5, 6, 7, 8];
   const toggle = (p) => {
-    const arr = value.includes(p) ? value.filter((v) => v !== p) : [...value, p];
-    onChange(arr);
+    if (value.includes(p)) {
+      onChange(value.filter((v) => v !== p))
+    } else {
+      onChange([...value, p]);
+    }
   };
   return (
-    <div className="inline-grid grid-cols-3 gap-3 rounded-lg border border-slate-300 bg-white p-4">
-      {points.map((p) => (
-        <button
-          type="button"
-          key={p}
-          onClick={() => toggle(p)}
-          className={`h-8 w-8 rounded-full border-2 transition ${value.includes(p) ? 'border-orange-500 bg-orange-500' : 'border-slate-300 bg-slate-100'}`}
-        />
-      ))}
+    <div className="flex items-center gap-3">
+      <div className="inline-grid grid-cols-3 gap-3 rounded-lg border border-slate-300 bg-white p-4">
+        {points.map((p) => {
+          const order = value.indexOf(p);
+          const selected = order !== -1;
+          return (
+            <button
+              type="button"
+              key={p}
+              onClick={() => toggle(p)}
+              className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-bold transition ${selected ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-300 bg-slate-100 text-transparent'}`}
+            >
+              {selected ? order + 1 : ''}
+            </button>
+          );
+        })}
+      </div>
+      <button type="button" onClick={() => onChange([])} className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-red-600">
+        <Eraser size={14} /> Limpar Padrão
+      </button>
     </div>
   );
 }
@@ -76,15 +97,13 @@ export default function NewServiceOrder() {
       customer_id: c.customer_id,
       customer_name: c.customer_name,
       customer_phone: c.customer_phone || '',
-      customer_alt: c.customer_alternative_phone || '',
+      customer_alternative_phone: c.customer_alternative_phone || '',
     }));
   };
 
-  const validate = () => {
-    if (step === 0 && (!f.customer_name.trim() || !f.customer_phone.trim())) return 'Informe o nome e o telefone do cliente';
-    if (step === 1 && (!f.device_brand.trim() || !f.device_model.trim())) return 'Informe a marca e o modelo do aparelho';
-    if (step === 2 && (!f.reported_issue.trim() || !f.physical_condition.trim())) return 'Informe o problema relatado e o estado físico';
-    return null;
+  const handlePinChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '');
+    setF((s) => ({ ...s, passcode_pin: digits }));
   };
 
   const handleSubmit = async (e) => {
@@ -96,17 +115,18 @@ export default function NewServiceOrder() {
     setSaving(true);
     try {
       const payload = {
-        customer: { customer_id: f.customer_id || undefined, customer_name: f.customer_name, customer_phone: f.customer_phone, customer_alternative_phone: f.customer_alt },
+        customer: { customer_id: f.customer_id || undefined, customer_name: f.customer_name, customer_phone: f.customer_phone, customer_alternative_phone: f.customer_alternative_phone },
         device: {
           device_type: f.device_type,
           device_brand: f.device_brand || f.device_type,
           device_model: f.device_model,
-          passcode_pin: f.passcode_pin,
-          passcode_written: f.passcode_written,
-          passcode_pattern: pattern,
+          passcode_pin: f.passcode_type === 'pin' ? f.passcode_pin: '',
+          passcode_written: f.passcode_type === 'written' ? f.passcode_written : '',
+          passcode_pattern: f.passcode_type === 'pattern' ? pattern : [],
         },
         reported_issue: f.reported_issue,
         estimated_budget_days: Number(f.estimated_budget_days) || 1,
+        estimated_delivery_at: f.estimated_delivery_at || undefined,
       };
       const { data } = await api.post('/service-orders', payload);
       toast.success(`OS #${data.service_order_number} aberta com sucesso!`);
@@ -170,58 +190,96 @@ export default function NewServiceOrder() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4">
       <h1 className="text-2xl font-extrabold text-blue-900">Nova Ordem de Serviço</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Card title="Cliente">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="relative sm:col-span-2">
-              <Field label="Nome completo * (digite para buscar clientes anteriores)">
-                <input className={inputCls} value={f.customer_name} autoFocus autoComplete="off"
-                  onChange={(e) => { setPicked(false); setF((s) => ({ ...s, customer_name: e.target.value, customer_id: '' })); }} />
-              </Field>
-              {sugs.length > 0 && (
-                <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-                  {sugs.map((c) => (
-                    <li key={c.customer_id}>
-                      <button type="button" onClick={() => pick(c)} className="flex w-full flex-col px-3 py-2 text-left hover:bg-orange-50">
-                        <span className="text-sm font-semibold text-slate-800">{c.customer_name}</span>
-                        <span className="text-xs text-slate-500">{c.customer_phone}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <Field label="Telefone próprio *"><input className={inputCls} value={f.customer_phone} onChange={set('customer_phone')} placeholder="(00) 00000-0000" /></Field>
-            <Field label="Telefone para contato"><input className={inputCls} value={f.customer_alt} onChange={set('customer_alt')} /></Field>
+        <div className="md:grid md:grid-cols-12 md:gap-6">
+          <div className="md:col-span-4">
+            <Card title="Cliente">
+              <div className="space-y-4">
+                <div className="relative">
+                  <Field label="Nome completo *">
+                    <input className={inputCls} value={f.customer_name} autoFocus autoComplete="off"
+                      onChange={(e) => { setPicked(false); setF((s) => ({ ...s, customer_name: e.target.value, customer_id: '' })); }} />
+                  </Field>
+                  {sugs.length > 0 && (
+                    <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {sugs.map((c) => (
+                        <li key={c.customer_id}>
+                          <button type="button" onClick={() => pick(c)} className="flex w-full flex-col px-3 py-2 text-left hover:bg-orange-50">
+                            <span className="text-sm font-semibold text-slate-800">{c.customer_name}</span>
+                            <span className="text-xs text-slate-500">{c.customer_phone}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <Field label="Telefone próprio *"><input className={inputCls} value={f.customer_phone} onChange={set('customer_phone')} placeholder="(00) 00000-0000" /></Field>
+                <Field label="Telefone para contato *"><input className={inputCls} value={f.customer_alt} onChange={set('customer_alt')} /></Field>
+              </div>
+            </Card>
           </div>
-        </Card>
 
-        <Card title="Dispositivo">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Tipo de dispositivo">
-              <select className={inputCls} value={f.device_type} onChange={set('device_type')}>
-                {DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </Field>
-            <Field label="Modelo *"><input className={inputCls} value={f.device_model} onChange={set('device_model')} placeholder="Ex.: Galaxy A54" /></Field>
-            <Field label="Problema detectado *" className="sm:col-span-2"><textarea rows={3} className={inputCls} value={f.reported_issue} onChange={set('reported_issue')} /></Field>
-            <Field label="Previsão de orçamento (dias)"><input type="number" min="0" className={inputCls} value={f.estimated_budget_days} onChange={set('estimated_budget_days')} /></Field>
-          </div>
-        </Card>
+          <div className="mt-4 md:col-span-8 md:mt-0">
+            <Card title="Dispositivo">
+              <div className="space-y-4">
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+                  <Field label="Tipo de dispositivo">
+                    <select className={inputCls} value={f.device_type} onChange={set('device_type')}>
+                      {DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Marca"><input className={inputCls} value={f.device_brand} onChange={set('device_brand')} placeholder="Ex.: Samsung" /></Field>
+                  <Field label="Modelo *"><input className={inputCls} value={f.device_model} onChange={set('device_model')} placeholder="Ex.: Galaxy A54" /></Field>
+                </div>
 
-        <Card title="Senhas de acesso">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="PIN"><input className={inputCls} value={f.passcode_pin} onChange={set('passcode_pin')} /></Field>
-            <Field label="Senha escrita"><input className={inputCls} value={f.passcode_written} onChange={set('passcode_written')} /></Field>
-            <div className="sm:col-span-2">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Padrão de desenho</span>
-              <PatternPad value={pattern} onChange={setPattern} />
-            </div>
+                <Field label="Problema detectado *">
+                  <textarea rows={3} className={inputCls} value={f.reported_issue} onChange={set('reported_issue')} />
+                </Field>
+
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                  <Field label="Previsão de orçamento (dias)"><input type="number" min="0" className={inputCls} value={f.estimated_budget_days} onChange={set('estimated_budget_days')} /></Field>
+                  <Field label="Previsão de entrega"><input type="date" className={inputCls} value={f.estimated_delivery_at} onChange={set('estimated_delivery_at')} /></Field>
+                </div>
+
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                  <Field label="Tipo de senha">
+                    <select className={inputCls} value={f.passcode_type} onChange={(e) => { setF((s) => ({ ...s, passcode_type: e.target.value, passcode_pin: '', passcode_written: '' })); setPattern([]); }}>
+                      {PASSWORD_TYPES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </Field>
+
+                  {f.passcode_type === 'pin' && (
+                    <Field label="PIN (somente números)">
+                      <input inputMode="numeric" type="text" className={inputCls} value={f.passcode_pin} onChange={handlePinChange} maxLength={12} />
+                    </Field>
+                  )}
+
+                  {f.passcode_type === 'written' && (
+                    <Field label="Senha (texto)">
+                      <input type="text" className={inputCls} value={f.passcode_written} onChange={set('passcode_written')} />
+                    </Field>
+                  )}
+
+                  {f.passcode_type === 'pattern' && (
+                    <div>
+                      <span className="mb-1 block text-sm font-medium text-slate-700">Padrão de desenho</span>
+                      <PatternPad value={pattern} onChange={setPattern} />
+                    </div>
+                  )}
+
+                  {f.passcode_type === 'none' && (
+                    <div className="flex items-end">
+                      <p className="text-sm text-slate-400">Nenhuma senha será registrada.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
           </div>
-        </Card>
+        </div>
 
         <div className="flex justify-between gap-3">
           <button type="button" className={btnGhost} onClick={() => navigate('/ordens')}>Cancelar</button>

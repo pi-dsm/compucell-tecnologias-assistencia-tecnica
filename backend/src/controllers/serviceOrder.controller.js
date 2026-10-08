@@ -47,6 +47,7 @@ function generatePDFBuffer(order) {
     doc.text(`Modelo: ${order.device.device_brand} ${order.device.device_model}`);
     doc.text(`Problema Detectado: ${order.reported_issue}`);
     doc.text(`Previsão de Orçamento: ${order.estimated_budget_days || 1} dia(s) útil(eis)`);
+    doc.text(`Previsão de Entrega: ${order.estimated_delivery_at ? order.estimated_delivery_at.toLocaleDateString() : '—'}`);
     doc.moveDown(1);
 
     doc.fontSize(9).font('Helvetica-BoldOblique').fillColor('red').text(
@@ -124,7 +125,7 @@ exports.update = asyncHandler(async (req, res) => {
   const b = req.body;
   for (const k of Object.keys(b.customer || {})) order.set(`customer.${k}`, b.customer[k]);
   for (const k of Object.keys(b.device || {})) order.set(`device.${k}`, b.device[k]);
-  const simple = pick(b, ['reported_issue', 'physical_condition', 'passcode', 'acessories_left_behind', 'internal_notes', 'labor_total_amount', 'discount_amount', 'estimated_delivery_at']);
+  const simple = pick(b, ['reported_issue', 'passcode', 'extra_info', 'labor_total_amount', 'discount_amount', 'estimated_delivery_at']);
   if (simple.estimated_delivery_at === '') simple.estimated_delivery_at = null;
   order.set(simple);
   order.updated_by = req.user._id;
