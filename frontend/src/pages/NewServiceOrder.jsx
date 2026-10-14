@@ -1,309 +1,258 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Download, Eraser, FileText, Printer, X } from 'lucide-react';
+import { UserCheck } from 'lucide-react';
 import api, { errMsg } from '../services/api';
 import { useToast } from '../context/ToastContext';
-import { btnGhost, btnPrimary, Card, Field, inputCls, Modal } from '../components/ui';
+import { DEVICE_TYPES, PASSCODE_KINDS, dateInputToISO, todayPlus } from '../utils/format';
+import { btnGhost, btnPrimary, Card, Field, inputCls, PageHeader } from '../components/ui';
+import PatternPad from '../components/os/PatternPad';
+import ReceiptModal from '../components/os/ReceiptModal';
 
-const DEVICE_TYPES = ['Celular', 'Tablet', 'Notebook', 'Computador', 'Console', 'Smartwatch', 'TV', 'Outro'];
+const blankCustomer = { name: '', phone: '', alternative_phone: '' };
+const blankDevice = { device_type: 'phone', brand: '', model: '' };
+const blankPasscode = { kind: 'none', pin: '', written: '', pattern: [] };
 
-const PASSWORD_TYPES = [
-  { value: 'none', label: 'Nenhuma' },
-  { value: 'pin', label: 'PIN' },
-  { value: 'written', label: 'Texto' },
-  { value: 'pattern', label: 'Padrão' },
-];
 
-const initial = {
-  customer_id: '', customer_name: '', customer_phone: '', customer_alternative_phone: '',
-  device_type: 'Celular', device_brand: '', device_model: '', reported_issue: '', estimated_budget_days: 1, estimated_delivery_at: '',
-  passcode_type: 'none', passcode_pin: '', passcode_written: '', passcode_pattern: []
+const passcodePayload = ({ kind, pin, written, pattern }) => {
+  if (kind === 'pin') return { kind, pin };
+  if (kind === 'written') return { kind, written };
+  if (kind === 'pattern') return { kind, pattern };
+  return { kind: 'none' };
 };
+const passcodeFromDevice = (d) => ({
+  kind: d?.passcode?.kind || 'none',
+  pin: d?.passcode?.pin || '',
+  written: d?.passcode?.written || '',
+  pattern: d?.passcode?.pattern || [],
+});
 
-function PatternPad({ value, onChange }) {
-  const points = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-  const toggle = (p) => {
-    if (value.includes(p)) {
-      onChange(value.filter((v) => v !== p))
-    } else {
-      onChange([...value, p]);
-    }
-  };
+function PasscodeFields({ value, onChange }) {
+  const set = (patch) => onChange({ ...value, ...patch });
   return (
-    <div className="flex items-center gap-3">
-      <div className="inline-grid grid-cols-3 gap-3 rounded-lg border border-slate-300 bg-white p-4">
-        {points.map((p) => {
-          const order = value.indexOf(p);
-          const selected = order !== -1;
-          return (
-            <button
-              type="button"
-              key={p}
-              onClick={() => toggle(p)}
-              className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-sm font-bold transition ${selected ? 'border-orange-500 bg-orange-500 text-white' : 'border-slate-300 bg-slate-100 text-transparent'}`}
-            >
-              {selected ? order + 1 : ''}
-            </button>
-          );
-        })}
-      </div>
-      <button type="button" onClick={() => onChange([])} className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-red-600">
-        <Eraser size={14} /> Limpar Padrão
-      </button>
+    <div className="space-y-3">
+      <Field label="Tipo de senha">
+        <select className={inputCls} value={value.kind} onChange={(e) => set({ kind: e.target.value })}>
+          {Object.entries(PASSCODE_KINDS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+      </Field>
+      {value.kind === 'pin' && (
+        <Field label="PIN (4 a 8 dígitos)">
+          <input className={inputCls} inputMode="numeric" maxLength={8} value={value.pin} onChange={(e) => set({ pin: e.target.value.replace(/\D/g, '') })} />
+        </Field>
+      )}
+      {value.kind === 'written' && (
+        <Field label="Senha escrita">
+          <input className={inputCls} value={value.written} onChange={(e) => set({ written: e.target.value })} />
+        </Field>
+      )}
+      {value.kind === 'pattern' && <PatternPad value={value.pattern} onChange={(pattern) => set({ pattern })} />}
     </div>
   );
-}
-
-function base64ToBlob(base64, type = 'application/pdf') {
-  const byteChars = atob(base64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-  return new Blob([bytes], { type });
 }
 
 export default function NewServiceOrder() {
   const navigate = useNavigate();
   const toast = useToast();
-  const [f, setF] = useState(initial);
-  const [pattern, setPattern] = useState([]);
-  const [sugs, setSugs] = useState([]);
-  const [picked, setPicked] = useState(false);
+
+  const [customer, setCustomer] = useState(null); // cliente já cadastrado
+  const [newCustomer, setNewCustomer] = useState(blankCustomer);
+  const [suggestions, setSuggestions] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [deviceId, setDeviceId] = useState(''); 
+  const [device, setDevice] = useState(blankDevice);
+  const [passcode, setPasscode] = useState(blankPasscode);
+  const [form, setForm] = useState({
+    reported_issue: '',
+    estimated_budget_at: todayPlus(1),
+    estimated_delivery_at: todayPlus(3),
+    internal_notes: '',
+  });
   const [saving, setSaving] = useState(false);
-  const [successModal, setSuccessModal] = useState(null);
+  const [created, setCreated] = useState(null);
 
-  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
-
+  // Autocomplete: busca clientes enquanto digita o nome
   useEffect(() => {
-    if (picked || f.customer_name.trim().length < 2) {
-      setSugs([]);
-      return;
+    const q = newCustomer.name.trim();
+    if (customer || q.length < 2) {
+      setSuggestions([]);
+      return undefined;
     }
-    const t = setTimeout(async () => {
-      try {
-        const { data } = await api.get('/service-orders/customers/search', { params: { q: f.customer_name } });
-        setSugs(data);
-      } catch {
-        setSugs([]);
-      }
+    const t = setTimeout(() => {
+      api.get('/customers', { params: { q, limit: 6 } }).then((r) => setSuggestions(r.data)).catch(() => setSuggestions([]));
     }, 300);
     return () => clearTimeout(t);
-  }, [f.customer_name, picked]);
+  }, [newCustomer.name, customer]);
 
-  const pick = (c) => {
-    setPicked(true);
-    setSugs([]);
-    setF((s) => ({
-      ...s,
-      customer_id: c.customer_id,
-      customer_name: c.customer_name,
-      customer_phone: c.customer_phone || '',
-      customer_alternative_phone: c.customer_alternative_phone || '',
-    }));
+  const selectDevice = (d) => {
+    setDeviceId(d ? d.id : '');
+    setPasscode(d ? passcodeFromDevice(d) : blankPasscode);
   };
 
-  const handlePinChange = (e) => {
-    const digits = e.target.value.replace(/\D/g, '');
-    setF((s) => ({ ...s, passcode_pin: digits }));
+  const pickCustomer = async (c) => {
+    setCustomer(c);
+    setSuggestions([]);
+    try {
+      const { data } = await api.get(`/customers/${c.id}/devices`);
+      setDevices(data);
+      selectDevice(data[0] || null);
+    } catch (e) {
+      toast.error(errMsg(e));
+    }
   };
 
-  const handleSubmit = async (e) => {
+  const clearCustomer = () => {
+    setCustomer(null);
+    setNewCustomer(blankCustomer);
+    setDevices([]);
+    selectDevice(null);
+  };
+
+  const submit = async (e) => {
     e.preventDefault();
-    if (!f.customer_name.trim() || !f.customer_phone.trim()) return toast.error('Informe o nome e o telefone do cliente');
-    if (!f.device_brand.trim() && !f.device_model.trim()) return toast.error('Informe o modelo do aparelho');
-    if (!f.reported_issue.trim()) return toast.error('Informe o problema detectado');
+    if (!customer && (!newCustomer.name.trim() || !newCustomer.phone.trim())) return toast.error('Informe o nome e o telefone do cliente');
+    if (!deviceId && (!device.brand.trim() || !device.model.trim())) return toast.error('Informe a marca e o modelo do aparelho');
+    if (passcode.kind === 'pin' && !/^\d{4,8}$/.test(passcode.pin)) return toast.error('O PIN deve ter de 4 a 8 dígitos');
+    if (passcode.kind === 'written' && !passcode.written.trim()) return toast.error('Informe a senha escrita');
+    if (passcode.kind === 'pattern' && passcode.pattern.length < 4) return toast.error('Desenhe o padrão com ao menos 4 pontos');
+    if (!form.reported_issue.trim()) return toast.error('Informe o problema detectado');
+    if (!form.estimated_budget_at || !form.estimated_delivery_at) return toast.error('Informe as previsões de orçamento e de entrega');
+
+    const body = {
+      ...(customer ? { customer_id: customer.id } : { customer: newCustomer }),
+      ...(deviceId
+        ? { device_id: deviceId, device: { passcode: passcodePayload(passcode) } }
+        : { device: { ...device, passcode: passcodePayload(passcode) } }),
+      reported_issue: form.reported_issue,
+      estimated_budget_at: dateInputToISO(form.estimated_budget_at),
+      estimated_delivery_at: dateInputToISO(form.estimated_delivery_at),
+      internal_notes: form.internal_notes,
+    };
 
     setSaving(true);
     try {
-      const payload = {
-        customer: { customer_id: f.customer_id || undefined, customer_name: f.customer_name, customer_phone: f.customer_phone, customer_alternative_phone: f.customer_alternative_phone },
-        device: {
-          device_type: f.device_type,
-          device_brand: f.device_brand || f.device_type,
-          device_model: f.device_model,
-          passcode_pin: f.passcode_type === 'pin' ? f.passcode_pin: '',
-          passcode_written: f.passcode_type === 'written' ? f.passcode_written : '',
-          passcode_pattern: f.passcode_type === 'pattern' ? pattern : [],
-        },
-        reported_issue: f.reported_issue,
-        estimated_budget_days: Number(f.estimated_budget_days) || 1,
-        estimated_delivery_at: f.estimated_delivery_at || undefined,
-      };
-      const { data } = await api.post('/service-orders', payload);
+      const { data } = await api.post('/service-orders', body);
       toast.success(`OS #${data.service_order_number} aberta com sucesso!`);
-      setSuccessModal({ id: data.id, soNumber: data.service_order_number, pdfBase64: data.pdfBase64 });
-    } catch (e) {
-      toast.error(errMsg(e));
+      setCreated(data); // abre o modal do comprovante automaticamente
+    } catch (err) {
+      toast.error(errMsg(err));
     } finally {
       setSaving(false);
     }
   };
 
-  const handlePrint = () => {
-    if (!successModal?.pdfBase64) return toast.error('PDF indisponível para impressão');
-    try {
-      const blob = base64ToBlob(successModal.pdfBase64, 'application/pdf');
-      const url = URL.createObjectURL(blob);
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = url;
-      document.body.appendChild(iframe);
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow.focus();
-          iframe.contentWindow.print();
-        } catch {
-          toast.error('Não foi possível acionar a impressão automática. Use o download.');
-        }
-      };
-    } catch {
-      toast.error('Falha ao preparar o PDF para impressão');
-    }
-  };
+return (
+    <form onSubmit={submit} className="mx-auto max-w-5xl space-y-5">
+      <PageHeader title="Nova ordem de serviço" subtitle="Campos marcados com * são obrigatórios." />
 
-  const handleDownload = async () => {
-    if (!successModal) return;
-    try {
-      let blob;
-      if (successModal.pdfBase64) {
-        blob = base64ToBlob(successModal.pdfBase64, 'application/pdf');
-      } else {
-        const { data } = await api.get(`/service-orders/${successModal.id}/pdf`, { responseType: 'blob' });
-        blob = data;
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `OS-${successModal.soNumber}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      toast.error(errMsg(e));
-    }
-  };
-
-  const closeSuccess = () => {
-    const id = successModal?.id;
-    setSuccessModal(null);
-    navigate(id ? `/ordens/${id}` : '/ordens');
-  };
-
-  return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <h1 className="text-2xl font-extrabold text-blue-900">Nova Ordem de Serviço</h1>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="md:grid md:grid-cols-12 md:gap-6">
-          <div className="md:col-span-4">
-            <Card title="Cliente">
-              <div className="space-y-4">
-                <div className="relative">
-                  <Field label="Nome completo *">
-                    <input className={inputCls} value={f.customer_name} autoFocus autoComplete="off"
-                      onChange={(e) => { setPicked(false); setF((s) => ({ ...s, customer_name: e.target.value, customer_id: '' })); }} />
-                  </Field>
-                  {sugs.length > 0 && (
-                    <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-                      {sugs.map((c) => (
-                        <li key={c.customer_id}>
-                          <button type="button" onClick={() => pick(c)} className="flex w-full flex-col px-3 py-2 text-left hover:bg-orange-50">
-                            <span className="text-sm font-semibold text-slate-800">{c.customer_name}</span>
-                            <span className="text-xs text-slate-500">{c.customer_phone}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="space-y-5">
+          <Card title="Cliente">
+            {customer ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-emerald-50 p-3 ring-1 ring-emerald-200">
+                <div className="flex items-center gap-2 text-sm">
+                  <UserCheck className="text-emerald-600" size={20} />
+                  <div>
+                    <p className="font-semibold text-emerald-900">{customer.name}</p>
+                    <p className="text-emerald-800">{customer.phone}</p>
+                  </div>
                 </div>
-                <Field label="Telefone próprio *"><input className={inputCls} value={f.customer_phone} onChange={set('customer_phone')} placeholder="(00) 00000-0000" /></Field>
-                <Field label="Telefone para contato *"><input className={inputCls} value={f.customer_alt} onChange={set('customer_alt')} /></Field>
+                <button type="button" onClick={clearCustomer} className="text-xs font-semibold text-slate-600 underline">Trocar</button>
               </div>
-            </Card>
-          </div>
-
-          <div className="mt-4 md:col-span-8 md:mt-0">
-            <Card title="Dispositivo">
-              <div className="space-y-4">
-                <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-                  <Field label="Tipo de dispositivo">
-                    <select className={inputCls} value={f.device_type} onChange={set('device_type')}>
-                      {DEVICE_TYPES.map((t) => <option key={t}>{t}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Marca"><input className={inputCls} value={f.device_brand} onChange={set('device_brand')} placeholder="Ex.: Samsung" /></Field>
-                  <Field label="Modelo *"><input className={inputCls} value={f.device_model} onChange={set('device_model')} placeholder="Ex.: Galaxy A54" /></Field>
-                </div>
-
-                <Field label="Problema detectado *">
-                  <textarea rows={3} className={inputCls} value={f.reported_issue} onChange={set('reported_issue')} />
+            ) : (
+              <div className="space-y-3">
+                <Field label="Nome do cliente *" hint="Comece a digitar para buscar um cliente já cadastrado.">
+                  <div className="relative">
+                    <input className={inputCls} autoFocus value={newCustomer.name} onChange={(e) => setNewCustomer((s) => ({ ...s, name: e.target.value }))} />
+                    {suggestions.length > 0 && (
+                      <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-pop">
+                        {suggestions.map((c) => (
+                          <li key={c.id}>
+                            <button type="button" onClick={() => pickCustomer(c)} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-blue-50">
+                              <span className="font-medium">{c.name}</span>
+                              <span className="text-slate-500">{c.phone}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </Field>
-
-                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                  <Field label="Previsão de orçamento (dias)"><input type="number" min="0" className={inputCls} value={f.estimated_budget_days} onChange={set('estimated_budget_days')} /></Field>
-                  <Field label="Previsão de entrega"><input type="date" className={inputCls} value={f.estimated_delivery_at} onChange={set('estimated_delivery_at')} /></Field>
-                </div>
-
-                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                  <Field label="Tipo de senha">
-                    <select className={inputCls} value={f.passcode_type} onChange={(e) => { setF((s) => ({ ...s, passcode_type: e.target.value, passcode_pin: '', passcode_written: '' })); setPattern([]); }}>
-                      {PASSWORD_TYPES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Telefone *">
+                    <input className={inputCls} inputMode="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer((s) => ({ ...s, phone: e.target.value }))} />
                   </Field>
-
-                  {f.passcode_type === 'pin' && (
-                    <Field label="PIN (somente números)">
-                      <input inputMode="numeric" type="text" className={inputCls} value={f.passcode_pin} onChange={handlePinChange} maxLength={12} />
-                    </Field>
-                  )}
-
-                  {f.passcode_type === 'written' && (
-                    <Field label="Senha (texto)">
-                      <input type="text" className={inputCls} value={f.passcode_written} onChange={set('passcode_written')} />
-                    </Field>
-                  )}
-
-                  {f.passcode_type === 'pattern' && (
-                    <div>
-                      <span className="mb-1 block text-sm font-medium text-slate-700">Padrão de desenho</span>
-                      <PatternPad value={pattern} onChange={setPattern} />
-                    </div>
-                  )}
-
-                  {f.passcode_type === 'none' && (
-                    <div className="flex items-end">
-                      <p className="text-sm text-slate-400">Nenhuma senha será registrada.</p>
-                    </div>
-                  )}
+                  <Field label="Telefone alternativo">
+                    <input className={inputCls} inputMode="tel" value={newCustomer.alternative_phone} onChange={(e) => setNewCustomer((s) => ({ ...s, alternative_phone: e.target.value }))} />
+                  </Field>
                 </div>
               </div>
-            </Card>
-          </div>
-        </div>
+            )}
+          </Card>
 
-        <div className="flex justify-between gap-3">
-          <button type="button" className={btnGhost} onClick={() => navigate('/ordens')}>Cancelar</button>
-          <button type="submit" className={btnPrimary} disabled={saving}>
-            {saving ? 'Salvando...' : (<><Check size={16} /> Abrir Ordem de Serviço</>)}
-          </button>
-        </div>
-      </form>
+          <Card title="Dispositivo">
+            {devices.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {devices.map((d) => (
+                  <label key={d.id} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm ${deviceId === d.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                    <input type="radio" name="device" checked={deviceId === d.id} onChange={() => selectDevice(d)} />
+                    <span><b>{d.brand} {d.model}</b> <span className="text-slate-500">· {DEVICE_TYPES[d.device_type]}{d.serial_number ? ` · ${d.serial_number}` : ''}</span></span>
+                  </label>
+                ))}
+                <label className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm ${deviceId === '' ? 'border-blue-500 bg-blue-50' : 'border-slate-200'}`}>
+                  <input type="radio" name="device" checked={deviceId === ''} onChange={() => selectDevice(null)} />
+                  <b>Cadastrar outro aparelho</b>
+                </label>
+              </div>
+            )}
 
-      {successModal && (
-        <Modal title={`OS #${successModal.soNumber} aberta!`} onClose={closeSuccess}>
-          <div className="flex flex-col items-center gap-4 py-4 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><FileText size={32} /></div>
-            <p className="text-sm text-slate-600">Ordem de serviço registrada com sucesso. Escolha uma das opções abaixo para a 2ª via:</p>
-            <div className="flex w-full flex-col gap-3 sm:flex-row">
-              <button onClick={handleDownload} className={`${btnGhost} w-full`}><Download size={16} /> Fazer download</button>
-              <button onClick={handlePrint} className={`${btnPrimary} w-full`}><Printer size={16} /> Imprimir via cliente</button>
+            {deviceId === '' && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Tipo *">
+                  <select className={inputCls} value={device.device_type} onChange={(e) => setDevice((s) => ({ ...s, device_type: e.target.value }))}>
+                    {Object.entries(DEVICE_TYPES).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Marca *">
+                  <input className={inputCls} value={device.brand} onChange={(e) => setDevice((s) => ({ ...s, brand: e.target.value }))} />
+                </Field>
+                <Field label="Modelo *">
+                  <input className={inputCls} value={device.model} onChange={(e) => setDevice((s) => ({ ...s, model: e.target.value }))} />
+                </Field>
+              </div>
+            )}
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <PasscodeFields value={passcode} onChange={setPasscode} />
             </div>
-            <button onClick={closeSuccess} className="mt-1 flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-700">
-              <X size={16} /> Concluir
-            </button>
+          </Card>
+        </div>
+
+        <Card title="Atendimento" className="self-start">
+          <div className="space-y-3">
+            <Field label="Problema detectado *">
+              <textarea className={inputCls} rows={4} value={form.reported_issue} onChange={(e) => setForm((s) => ({ ...s, reported_issue: e.target.value }))} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Previsão de orçamento *">
+                <input type="date" className={inputCls} value={form.estimated_budget_at} onChange={(e) => setForm((s) => ({ ...s, estimated_budget_at: e.target.value }))} />
+              </Field>
+              <Field label="Previsão de entrega *">
+                <input type="date" className={inputCls} value={form.estimated_delivery_at} onChange={(e) => setForm((s) => ({ ...s, estimated_delivery_at: e.target.value }))} />
+              </Field>
+            </div>
+            <Field label="Observações internas" hint="Não aparecem no comprovante do cliente.">
+              <textarea className={inputCls} rows={3} value={form.internal_notes} onChange={(e) => setForm((s) => ({ ...s, internal_notes: e.target.value }))} />
+            </Field>
           </div>
-        </Modal>
-      )}
-    </div>
+        </Card>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button type="button" className={btnGhost} onClick={() => navigate('/ordens')}>Cancelar</button>
+        <button type="submit" className={btnPrimary} disabled={saving}>{saving ? 'Salvando…' : 'Abrir ordem de serviço'}</button>
+      </div>
+
+      {created && <ReceiptModal orderId={created.id} number={created.service_order_number} onClose={() => navigate('/ordens')} />}
+    </form>
   );
 }
