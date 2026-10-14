@@ -2,64 +2,138 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const argon2 = require('argon2');
 const User = require('./models/User');
+const Customer = require('./models/Customer');
+const Device = require('./models/Device');
+const Product = require('./models/Product');
+const StockMovement = require('./models/StockMovement');
+const Service = require('./models/Service');
 const ServiceOrder = require('./models/ServiceOrder');
 const Sale = require('./models/Sale');
+const Setting = require('./models/Setting');
+const { Counter } = require('./models/Counter');
+const { createSale } = require('./services/sale.service');
 
 const daysAgo = (n) => new Date(Date.now() - n * 86400000);
+const daysAhead = (n) => daysAgo(-n);
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
-  await Promise.all([User.deleteMany(), ServiceOrder.deleteMany(), Sale.deleteMany(), mongoose.connection.collection('counters').deleteMany({})]);
+  await Promise.all(
+    [User, Customer, Device, Product, StockMovement, Service, ServiceOrder, Sale, Setting, Counter].map((m) => m.deleteMany())
+  );
 
+  // ── Usuários ──────────────────────────────────────────────
   const admin = await User.create({ name: 'Administrador', email: 'admin@email.com', password: await argon2.hash('admin123'), phone: '(14) 99999-0000', role: 'admin' });
-  await User.create({ name: 'Técnico Carlos', email: 'tecnico@email.com', password: await argon2.hash('tecnico123'), phone: '(14) 99999-1111', role: 'technician' });
 
-  const base = { created_by: admin._id, updated_by: admin._id };
-  const orders = [
-    {
-      customer: { customer_name: 'João Silva', customer_phone: '(14) 99811-2233' },
-      device: { device_type: 'Celular', device_brand: 'Apple', device_model: 'iPhone 11', device_serial_number: '356789012345678', device_extra_info: 'Cor: Preto' },
-      reported_issue: 'Tela não responde ao toque', physical_condition: 'Arranhões leves na traseira',
-      passcode: '1234', acessories_left_behind: 'Capinha', status: 'in_diagnosis', estimated_delivery_at: daysAgo(-3),
-    },
-    {
-      customer: { customer_name: 'Maria Souza', customer_phone: '(14) 99755-4411', customer_alternative_phone: '(14) 3622-0000' },
-      device: { device_type: 'Celular', device_brand: 'Samsung', device_model: 'Galaxy A54', device_serial_number: '351234567890123', device_extra_info: 'Cor: Azul' },
-      reported_issue: 'Bateria descarrega muito rápido', physical_condition: 'Sem avarias',
-      status: 'in_repair', labor_total_amount: 80, estimated_delivery_at: daysAgo(-1),
-      parts_used: [{ part_name: 'Bateria Galaxy A54', cost_price: 60, selling_price: 120, quantity: 1, supplier_name: 'TecPeças', supplier_info: '(11) 4002-8922' }],
-      payments: [{ amount: 100, payment_method: 'pix', payment_status: 'paid', paid_at: daysAgo(1) }],
-    },
-    {
-      customer: { customer_name: 'Carlos Lima', customer_phone: '(14) 99630-7788' },
-      device: { device_type: 'Notebook', device_brand: 'Dell', device_model: 'Inspiron 15', device_serial_number: 'DL15-88231', device_extra_info: 'Cor: Prata' },
-      reported_issue: 'Não liga', physical_condition: 'Carcaça com marcas de uso',
-      acessories_left_behind: 'Carregador', status: 'ready', labor_total_amount: 120, discount_amount: 10, finished_at: daysAgo(0),
-      parts_used: [{ part_name: 'Fonte 65W', cost_price: 90, selling_price: 180, quantity: 1, supplier_name: 'InfoParts' }],
-      payments: [{ amount: 150, payment_method: 'cash', payment_status: 'paid', paid_at: daysAgo(2) }],
-    },
-  ];
-  for (const o of orders) {
-    const doc = new ServiceOrder({ ...o, ...base, service_order_number: await ServiceOrder.nextNumber() });
-    await doc.save();
+  // ── Clientes e aparelhos ──────────────────────────────────
+  const [joao, maria, carlos, paula] = await Customer.create([
+    { name: 'João Silva', phone: '(14) 99811-2233', alternative_phone: '(14) 99622-0000'},
+    { name: 'Maria Souza', phone: '(14) 99755-4411', alternative_phone: '(14) 99598-0000' },
+    { name: 'Carlos Lima', phone: '(14) 99630-7788', alternative_phone: '(14) 99630-0000' },
+    { name: 'Paula Ribeiro', phone: '(14) 99122-3344', alternative_phone: '(14) 99122-0000' },
+  ]);
+  const [iphone, galaxy, dell, moto, ipad] = await Device.create([
+    { customer: joao._id, device_type: 'phone', brand: 'Apple', model: 'iPhone 11', passcode: { kind: 'pin', pin: '1234' } },
+    { customer: maria._id, device_type: 'phone', brand: 'Samsung', model: 'Galaxy A54', passcode: { kind: 'pattern', pattern: [0, 1, 2, 5, 8] } },
+    { customer: carlos._id, device_type: 'laptop', brand: 'Dell', model: 'Inspiron 15', passcode: { kind: 'written', written: 'Dell@2024' } },
+    { customer: paula._id, device_type: 'phone', brand: 'Motorola', model: 'Moto G84' },
+    { customer: joao._id, device_type: 'tablet', brand: 'Apple', model: 'iPad 9', passcode: { kind: 'none' } },
+  ]);
+
+  // ── Catálogo ──────────────────────────────────────────────
+  const [pelicula, carregador, cabo, caderno, teclado, lampada] = await Product.create([
+    { name: 'Película 3D iPhone 13', barcode: '7891000000011', category: 'screen_protector', cost_price: 5, sale_price: 25, stock_quantity: 20, min_stock: 5 },
+    { name: 'Carregador USB-C 20W', barcode: '7891000000028', category: 'accessory', cost_price: 22, sale_price: 59.9, stock_quantity: 8, min_stock: 3 },
+    { name: 'Cabo Lightning 1m', barcode: '7891000000035', category: 'accessory', cost_price: 9, sale_price: 29.9, stock_quantity: 12, min_stock: 4 },
+    { name: 'Caderno 96 folhas', barcode: '7891000000042', category: 'stationery', cost_price: 8, sale_price: 18, stock_quantity: 15, min_stock: 5 },
+    { name: 'Teclado USB ABNT2', barcode: '7891000000059', category: 'keyboard', cost_price: 35, sale_price: 79.9, stock_quantity: 2, min_stock: 3 },
+    { name: 'Lâmpada LED 9W', barcode: '7891000000066', category: 'lighting', cost_price: 4, sale_price: 12, stock_quantity: 30, min_stock: 10 },
+  ]);
+  const [xerox, impressao, formatacao] = await Service.create([
+    { name: 'Xerox (cópia)', price: 0.5, cost_price: 0.1 },
+    { name: 'Impressão colorida', price: 2, cost_price: 0.6 },
+    { name: 'Formatação de computador', price: 120, cost_price: 0 },
+  ]);
+
+  // ── Ordens de serviço ─────────────────────────────────────
+  async function makeOrder(o) {
+    const order = new ServiceOrder({
+      customer: o.customer._id,
+      device: o.device._id,
+      reported_issue: o.issue,
+      estimated_budget_at: daysAhead(o.budgetIn ?? 1),
+      estimated_delivery_at: daysAhead(o.deliveryIn ?? 3),
+      status: o.status,
+      status_history: [{ status: 'received', changed_by: admin._id, changed_at: o.created }, ...(o.status !== 'received' ? [{ status: o.status, changed_by: admin._id, changed_at: o.updated || o.created }] : [])],
+      parts_used: o.parts || [],
+      no_parts_used: !!o.noParts,
+      labor_amount: o.labor || 0,
+      discount_amount: o.discount || 0,
+      payments: o.payments || [],
+      ready_at: o.ready_at,
+      delivered_at: o.delivered_at,
+      warranty_days: o.warranty_days,
+      warranty_until: o.warranty_until,
+      origin_order: o.origin_order,
+      is_warranty: !!o.is_warranty,
+      internal_notes: o.notes,
+      created_by: admin._id,
+      updated_by: admin._id,
+    });
+    await order.save();
+    await ServiceOrder.updateOne({ _id: order._id }, { created_at: o.created, updated_at: o.updated || o.created }, { timestamps: false });
+    return order;
   }
 
+  const screenPart = { part_name: 'Tela Galaxy A54', supplier_name: 'TecPeças', supplier_contact: '(11) 4002-8922', purchase_reference: 'NF-8812', cost_price: 150, sale_price: 280, quantity: 1, warranty_days: 90 };
+
+  await makeOrder({ customer: joao, device: iphone, issue: 'Tela não responde ao toque', status: 'received', created: daysAgo(5), deliveryIn: 2 });
+  await makeOrder({ customer: maria, device: galaxy, issue: 'Bateria descarrega muito rápido', status: 'in_diagnosis', created: daysAgo(2), updated: daysAgo(1) });
+  await makeOrder({ customer: carlos, device: dell, issue: 'Não liga', status: 'in_repair', created: daysAgo(3), updated: daysAgo(0.5) });
+  await makeOrder({
+    customer: paula, device: moto, issue: 'Não carrega', status: 'ready', created: daysAgo(6), updated: daysAgo(4), ready_at: daysAgo(4),
+    parts: [{ part_name: 'Conector de carga Moto G84', is_own_stock: true, sale_price: 70, quantity: 1 }], labor: 50,
+  });
+
+  // OS entregue que voltou em garantia (gera prejuízo)
+  const original = await makeOrder({
+    customer: maria, device: galaxy, issue: 'Tela trincada', status: 'returned', created: daysAgo(14), updated: daysAgo(3),
+    parts: [screenPart], labor: 60, delivered_at: daysAgo(10), warranty_days: 90, warranty_until: daysAhead(80),
+    payments: [{ amount: 340, payment_method: 'pix', paid_at: daysAgo(10) }],
+  });
+  await makeOrder({
+    customer: maria, device: galaxy, issue: 'Tela voltou a falhar (retorno)', status: 'delivered', created: daysAgo(3), updated: daysAgo(2),
+    is_warranty: true, origin_order: original._id, delivered_at: daysAgo(2), warranty_days: 30, warranty_until: daysAhead(28),
+    parts: [{ part_name: 'Flat da tela', supplier_name: 'InfoParts', purchase_reference: 'NF-9001', cost_price: 35, sale_price: 0, quantity: 1 }],
+    notes: `Retorno em garantia da OS #${original.service_order_number}.`,
+  });
+  await makeOrder({
+    customer: carlos, device: dell, issue: 'Troca de fonte', status: 'delivered', created: daysAgo(5), updated: daysAgo(1),
+    parts: [{ part_name: 'Fonte 65W', supplier_name: 'InfoParts', purchase_reference: 'NF-7733', cost_price: 90, sale_price: 180, quantity: 1 }],
+    labor: 40, delivered_at: daysAgo(1), warranty_days: 90, warranty_until: daysAhead(89),
+    payments: [{ amount: 120, payment_method: 'cash', paid_at: daysAgo(1) }], // saldo pendente de R$ 100,00
+  });
+  await makeOrder({ customer: joao, device: ipad, issue: 'Limpeza e troca de pasta térmica', status: 'cancelled', created: daysAgo(9), updated: daysAgo(8) });
+
+  // ── Vendas (via serviço: exercita estoque e regras) ───────
   const sales = [
-    { items: [{ comercial_name: 'Película iPhone 13', category: 'Acessórios', cost_price: 5, selling_price: 25, quantity: 2 }], discount: 0, method: 'pix', at: daysAgo(0) },
-    { items: [{ comercial_name: 'Xerox', category: 'Papelaria', cost_price: 0.1, selling_price: 0.5, quantity: 40 }, { comercial_name: 'Caderno 96 folhas', category: 'Papelaria', cost_price: 8, selling_price: 18, quantity: 1 }], discount: 2, method: 'cash', at: daysAgo(1) },
-    { items: [{ comercial_name: 'Carregador USB-C 20W', category: 'Acessórios', cost_price: 22, selling_price: 59.9, quantity: 1 }, { comercial_name: 'Cabo Lightning 1m', category: 'Acessórios', cost_price: 9, selling_price: 29.9, quantity: 1 }], discount: 5, method: 'credit_card', at: daysAgo(3) },
+    { at: 0, body: { items: [{ item_type: 'product', product_id: pelicula._id, quantity: 2 }], payments: [{ amount: 50, payment_method: 'pix' }] } },
+    { at: 1, body: { items: [{ item_type: 'service', service_id: xerox._id, quantity: 40 }, { item_type: 'product', product_id: caderno._id, quantity: 1 }], discount_amount: 2, payments: [{ amount: 36, payment_method: 'cash' }] } },
+    { at: 3, body: { items: [{ item_type: 'product', product_id: carregador._id, quantity: 1 }, { item_type: 'product', product_id: cabo._id, quantity: 1 }], discount_amount: 5, payments: [{ amount: 84.8, payment_method: 'credit_card' }] } },
+    { at: 4, body: { items: [{ item_type: 'service', service_id: formatacao._id, quantity: 1 }], customer_id: carlos._id, payments: [{ amount: 60, payment_method: 'pix' }], allow_partial: true } },
   ];
   for (const s of sales) {
-    const sale = new Sale({ products_sold: s.items, discount_amount: s.discount, created_by: admin._id });
-    sale.recalculate();
-    sale.payments.push({ amount: sale.grand_total_amount, payment_method: s.method, payment_status: 'paid', paid_at: s.at });
-    await sale.save();
-    await Sale.updateOne({ _id: sale._id }, { created_at: s.at });
+    const sale = await createSale(s.body, admin);
+    const at = daysAgo(s.at);
+    await Sale.updateOne({ _id: sale._id }, { $set: { created_at: at, 'payments.$[].paid_at': at } }, { timestamps: false });
   }
 
-  console.log('Seed concluído. Login: admin@email.com / admin123');
+  await Setting.create({ key: 'goals', value: { daily: 400, weekly: 2500, monthly: 10000 } });
+
+  console.log('Seed concluído.');
+  console.log('Logins: admin@email.com / admin123');
   await mongoose.disconnect();
-})().catch((e) => {
-  console.error(e);
+})().catch((err) => {
+  console.error(err);
   process.exit(1);
 });
