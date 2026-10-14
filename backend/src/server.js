@@ -32,6 +32,7 @@ app.use('/api/v1/sales', require('./routes/sale.routes'));
 app.use('/api/v1/dashboard', require('./routes/dashboard.routes'));
 app.use('/api/v1/customers', require('./routes/customer.routes'));
 app.use('/api/v1/devices', require('./routes/device.routes'));
+app.use('/api/v1/products', require('./routes/product.routes'));
 
 app.use((req, res) => res.status(404).json({ message: 'Rota não encontrada' }));
 
