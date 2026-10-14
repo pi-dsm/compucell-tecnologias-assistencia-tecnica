@@ -1,213 +1,138 @@
 const ServiceOrder = require('../models/ServiceOrder');
-const { STATUSES, METHODS } = require('../models/ServiceOrder');
-const { asyncHandler, clean, pick, escapeRegex } = require('../utils/helpers');
-const { round2, formatBRL } = require('../utils/money');
-const PDFDocument = require('pdfkit');
+const Customer = require('../models/Customer');
+const Device = require('../models/Device');
+const flow = require('../services/serviceOrder.service');
+const pdf = require('../services/pdf.service');
+const { STATUSES, OPEN_STATUSES, CLOSED_STATUSES } = ServiceOrder;
+const { asyncHandler, clean, pick, escapeRegex, parseLimit, httpError } = require('../utils/helpers');
 
-const findOrder = async (id, res) => {
+const FULL = [{ path: 'customer' }, { path: 'device' }, { path: 'origin_order', select: 'service_order_number status' }];
+const LIGHT = [
+  { path: 'customer', select: 'name phone' },
+  { path: 'device', select: 'device_type brand model' },
+];
+const SORTS = {
+  updated: { updated_at: -1 },
+  oldest: { created_at: 1 },
+  newest: { created_at: -1 },
+  ready_oldest: { ready_at: 1 },
+};
+
+const loadOrder = async (id) => {
   const order = await ServiceOrder.findById(id);
-  if (!order) res.status(404).json({ message: 'Ordem de serviço não encontrada' });
+  if (!order) throw httpError(404, 'Ordem de serviço não encontrada');
   return order;
 };
-
-const COMPANY = {
-  name: 'Nardelli Assistência Técnica e Comércio',
-  cnpj: '12.345.678/0001-90',
-  contact: 'WhatsApp / Contato: (14) 99999-9999 | Jaú - SP',
-};
-
-function generatePDFBuffer(order) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const chunks = [];
-    doc.on('data', (c) => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    doc.fontSize(16).font('Helvetica-Bold').text(COMPANY.name, { align: 'center' });
-    doc.fontSize(10).font('Helvetica').text(`CNPJ: ${COMPANY.cnpj}`, { align: 'center' });
-    doc.text(COMPANY.contact, { align: 'center' });
-    doc.moveDown(1);
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-    doc.moveDown(1);
-
-    doc.fontSize(14).font('Helvetica-Bold').text(`Comprovante de Entrada - OS #${order.service_order_number}`, { align: 'center' });
-    doc.moveDown(1);
-
-    doc.fontSize(12).font('Helvetica-Bold').text('Cliente');
-    doc.fontSize(10).font('Helvetica');
-    doc.text(`Nome: ${order.customer.customer_name}`);
-    doc.text(`Telefone: ${order.customer.customer_phone}`);
-    doc.text(`Telefone de Contato: ${order.customer.customer_alternative_phone || '—'}`);
-    doc.moveDown(1);
-
-    doc.fontSize(12).font('Helvetica-Bold').text('Dispositivo');
-    doc.fontSize(10).font('Helvetica');
-    doc.text(`Tipo: ${order.device.device_type}`);
-    doc.text(`Modelo: ${order.device.device_brand} ${order.device.device_model}`);
-    doc.text(`Problema Detectado: ${order.reported_issue}`);
-    doc.text(`Previsão de Orçamento: ${order.estimated_budget_days || 1} dia(s) útil(eis)`);
-    doc.text(`Previsão de Entrega: ${order.estimated_delivery_at ? order.estimated_delivery_at.toLocaleDateString() : '—'}`);
-    doc.moveDown(1);
-
-    doc.fontSize(9).font('Helvetica-BoldOblique').fillColor('red').text(
-      'Atenção: Conforme legislação vigente, dispositivos não retirados no prazo de 30 (trinta) dias após a conclusão do serviço ou notificação do orçamento estarão sujeitos a cobrança de taxa de permanência ou alienação para cobertura de custos operacionais.',
-      { align: 'justify' }
-    );
-    doc.fillColor('black');
-    doc.moveDown(3);
-
-    doc.fontSize(10).font('Helvetica').text('_____________________________________________');
-    doc.text('Assinatura do Cliente');
-
-    doc.end();
-  });
-}
-exports.generatePDFBuffer = generatePDFBuffer;
+const respond = async (res, order, status = 200) => res.status(status).json(await order.populate(FULL));
 
 exports.create = asyncHandler(async (req, res) => {
-  const b = clean(req.body);
-  const order = new ServiceOrder({
-    ...pick(b, ['customer', 'device', 'reported_issue', 'physical_condition', 'passcode', 'acessories_left_behind', 'estimated_delivery_at', 'labor_total_amount', 'discount_amount', 'internal_notes', 'estimated_budget_days']),
-    service_order_number: await ServiceOrder.nextNumber(),
-    created_by: req.user._id,
-    updated_by: req.user._id,
-  });
-  await order.save();
-  const pdfBuffer = await generatePDFBuffer(order);
-  res.status(201).json({
-    ...order.toJSON(),
-    pdfBase64: pdfBuffer.toString('base64'),
-  });
+  const order = await flow.openOrder(clean(req.body), req.user);
+  await respond(res, order, 201);
 });
 
 exports.list = asyncHandler(async (req, res) => {
-  const { status, q } = req.query;
+  const { status, scope, q, sort, limit, customer_id } = req.query;
   const filter = {};
   if (status && STATUSES.includes(status)) filter.status = status;
-  if (q) {
-    const rx = new RegExp(escapeRegex(q), 'i');
-    const or = [{ 'customer.customer_name': rx }, { 'customer.customer_phone': rx }, { 'device.device_model': rx }, { 'device.device_brand': rx }];
-    if (/^\d+$/.test(q)) or.push({ service_order_number: Number(q) });
+  else if (scope === 'open') filter.status = { $in: OPEN_STATUSES };
+  else if (scope === 'closed') filter.status = { $in: CLOSED_STATUSES };
+  if (customer_id) filter.customer = customer_id;
+
+  const term = String(q || '').trim();
+  if (term) {
+    const rx = new RegExp(escapeRegex(term), 'i');
+    const [customers, devices] = await Promise.all([
+      Customer.find(Customer.searchFilter(term)).select('_id').limit(100).lean(),
+      Device.find({ $or: [{ brand: rx }, { model: rx }, { serial_number: rx }] }).select('_id').limit(100).lean(),
+    ]);
+    const or = [{ customer: { $in: customers.map((c) => c._id) } }, { device: { $in: devices.map((d) => d._id) } }];
+    if (/^#?\d+$/.test(term)) or.push({ service_order_number: Number(term.replace('#', '')) });
     filter.$or = or;
   }
-  res.json(await ServiceOrder.find(filter).sort({ updated_at: -1 }).limit(200));
-});
 
-exports.searchCustomers = asyncHandler(async (req, res) => {
-  const q = String(req.query.q || '').trim();
-  if (q.length < 2) return res.json([]);
-  const rx = new RegExp(escapeRegex(q), 'i');
-  const orders = await ServiceOrder.find({ $or: [{ 'customer.customer_name': rx }, { 'customer.customer_phone': rx }] })
-    .sort({ created_at: -1 })
-    .limit(60)
-    .select('customer');
-  const seen = new Set();
-  const result = [];
-  for (const o of orders) {
-    const key = (o.customer.customer_phone || '').replace(/\D/g, '') || String(o.customer.customer_id);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(o.customer);
-    if (result.length >= 8) break;
-  }
-  res.json(result);
+   const orders = await ServiceOrder.find(filter)
+    .sort(SORTS[sort] || SORTS.updated)
+    .limit(parseLimit(limit, 300, 500))
+    .populate(LIGHT);
+  res.json(orders);
 });
 
 exports.get = asyncHandler(async (req, res) => {
-  const order = await findOrder(req.params.id, res);
-  if (order) res.json(order);
+  const order = await loadOrder(req.params.id);
+  await order.populate(FULL);
+  const warranty_returns = await ServiceOrder.find({ origin_order: order._id })
+    .select('service_order_number status created_at')
+    .sort({ created_at: -1 });
+  res.json({ ...order.toJSON(), warranty_returns });
 });
 
+// Edição de dados básicos (cliente/aparelho têm endpoints próprios)
 exports.update = asyncHandler(async (req, res) => {
-  const order = await findOrder(req.params.id, res);
-  if (!order) return;
+  const order = await loadOrder(req.params.id);
   const b = req.body;
-  for (const k of Object.keys(b.customer || {})) order.set(`customer.${k}`, b.customer[k]);
-  for (const k of Object.keys(b.device || {})) order.set(`device.${k}`, b.device[k]);
-  const simple = pick(b, ['reported_issue', 'passcode', 'extra_info', 'labor_total_amount', 'discount_amount', 'estimated_delivery_at']);
-  if (simple.estimated_delivery_at === '') simple.estimated_delivery_at = null;
-  order.set(simple);
+  const closed = CLOSED_STATUSES.includes(order.status);
+  if (b.internal_notes !== undefined) order.internal_notes = b.internal_notes; // sempre editável
+  if (!closed) {
+    order.set(clean(pick(b, ['reported_issue', 'estimated_budget_at', 'estimated_delivery_at'])));
+  }
   order.updated_by = req.user._id;
   await order.save();
-  res.json(order);
+  await respond(res, order);
 });
 
 exports.updateStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  if (!STATUSES.includes(status)) return res.status(400).json({ message: 'Status inválido' });
-  const order = await findOrder(req.params.id, res);
-  if (!order) return;
-  if (status === 'delivered' && order.balance_due > 0) {
-    return res.status(400).json({ message: `Existe saldo pendente de ${formatBRL(order.balance_due)}. Registre o pagamento antes de entregar.` });
-  }
-  order.status = status;
-  if (status === 'ready' && !order.finished_at) order.finished_at = new Date();
-  if (status === 'delivered') {
-    order.delivered_at = new Date();
-    if (!order.finished_at) order.finished_at = new Date();
-  }
-  if (['received', 'in_diagnosis', 'in_repair'].includes(status)) {
-    order.finished_at = undefined;
-    order.delivered_at = undefined;
-  }
-  order.updated_by = req.user._id;
-  await order.save();
-  res.json(order);
+  const order = await loadOrder(req.params.id);
+  await flow.changeStatus(order, req.body.status, req.user);
+  await respond(res, order);
 });
 
-exports.updateParts = asyncHandler(async (req, res) => {
-  const order = await findOrder(req.params.id, res);
-  if (!order) return;
-  const { part, parts_used } = req.body;
-  if (Array.isArray(parts_used)) order.parts_used = parts_used;
-  if (part) {
-    const idx = part.part_id ? order.parts_used.findIndex((p) => String(p.part_id) === String(part.part_id)) : -1;
-    if (idx >= 0) order.parts_used[idx].set(part);
-    else order.parts_used.push(part);
-  }
-  order.updated_by = req.user._id;
-  await order.save(); // recalcula parts_total, grand_total e lucro
-  res.json(order);
+exports.markReady = asyncHandler(async (req, res) => {
+  const order = await loadOrder(req.params.id);
+  await flow.markReady(order, req.body, req.user);
+  await respond(res, order);
+});
+
+exports.deliver = asyncHandler(async (req, res) => {
+  const order = await loadOrder(req.params.id);
+  await flow.deliver(order, req.body, req.user);
+  await respond(res, order);
 });
 
 exports.addPayment = asyncHandler(async (req, res) => {
-  const order = await findOrder(req.params.id, res);
-  if (!order) return;
-  const amount = round2(req.body.amount);
-  const { payment_method, payment_status = 'paid' } = req.body;
-  if (!(amount > 0)) return res.status(400).json({ message: 'Informe um valor maior que zero' });
-  if (!METHODS.includes(payment_method)) return res.status(400).json({ message: 'Forma de pagamento inválida' });
-  if (payment_status === 'paid' && amount > order.balance_due + 0.001) {
-    return res.status(400).json({ message: `Valor excede o saldo restante (${formatBRL(order.balance_due)})` });
-  }
-  order.payments.push({ amount, payment_method, payment_status, paid_at: new Date() });
-  order.updated_by = req.user._id;
-  await order.save();
-  res.json(order);
+  const order = await loadOrder(req.params.id);
+  await flow.addPayment(order, req.body, req.user);
+  await respond(res, order);
+});
+
+exports.registerReturn = asyncHandler(async (req, res) => {
+  const original = await loadOrder(req.params.id);
+  const warrantyOrder = await flow.registerReturn(original, clean(req.body), req.user);
+  await respond(res, warrantyOrder, 201);
 });
 
 exports.remove = asyncHandler(async (req, res) => {
-  const order = await findOrder(req.params.id, res);
-  if (!order) return;
+  const order = await loadOrder(req.params.id);
   if (req.query.hard === 'true') {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Apenas administradores podem remover' });
+    if (req.user.role !== 'admin') throw httpError(403, 'Apenas administradores podem remover definitivamente');
     await order.deleteOne();
     return res.json({ message: 'OS removida' });
   }
-  order.status = 'cancelled';
-  order.updated_by = req.user._id;
-  await order.save();
-  res.json(order);
+  await flow.cancel(order, req.user);
+  await respond(res, order);
 });
 
-exports.getPdf = asyncHandler(async (req, res) => {
-  const order = await ServiceOrder.findById(req.params.id);
-  if (!order) return res.status(404).json({ message: 'Ordem de serviço não encontrada' });
-  const pdfBuffer = await generatePDFBuffer(order);
-  res.set({
-    'Content-Type': 'application/pdf',
-    'Content-Disposition': `inline; filename="OS-${order.service_order_number}.pdf"`,
-  });
-  res.send(pdfBuffer);
+const sendPdf = (res, buffer, filename) => {
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${filename}"` });
+  res.send(buffer);
+};
+
+exports.receiptPdf = asyncHandler(async (req, res) => {
+  const order = await (await loadOrder(req.params.id)).populate(FULL);
+  sendPdf(res, await pdf.buildReceipt(order), `OS-${order.service_order_number}-comprovante.pdf`);
+});
+
+exports.warrantyPdf = asyncHandler(async (req, res) => {
+  const order = await (await loadOrder(req.params.id)).populate(FULL);
+  if (order.status !== 'delivered') throw httpError(409, 'O termo de garantia só é emitido para OS entregues.');
+  sendPdf(res, await pdf.buildWarranty(order), `OS-${order.service_order_number}-garantia.pdf`);
 });
