@@ -18,3 +18,19 @@ exports.login = asyncHandler(async (req, res) => {
   });
   res.json({ token, user });
 });
+
+exports.me = asyncHandler(async (req, res) => res.json(req.user));
+
+exports.updatePreferences = asyncHandler(async (req, res) => {
+  const { orders_view, workspace_order } = req.body;
+  if (orders_view !== undefined) {
+    if (!VIEWS.includes(orders_view)) throw httpError(400, 'Visualização inválida');
+    req.user.preferences.orders_view = orders_view;
+  }
+  if (workspace_order !== undefined) {
+    if (!Array.isArray(workspace_order) || workspace_order.length > 1000) throw httpError(400, 'Ordem dos cards inválida');
+    req.user.preferences.workspace_order = workspace_order;
+  }
+  await req.user.save();
+  res.json(req.user);
+});

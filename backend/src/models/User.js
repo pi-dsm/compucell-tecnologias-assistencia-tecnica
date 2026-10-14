@@ -8,6 +8,10 @@ const schema = new mongoose.Schema(
     phone: { type: String, trim: true },
     role: { type: String, enum: ['admin', 'technician', 'attendant'], default: 'attendant' },
     is_active: { type: Boolean, default: true },
+    preferences: {
+      orders_view: { type: String, enum: ['kanban', 'workspace', 'table'], default: 'kanban' },
+      workspace_order: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+    },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );
