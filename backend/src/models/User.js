@@ -6,8 +6,13 @@ const schema = new mongoose.Schema(
     email: { type: String, required: [true, 'E-mail é obrigatório'], unique: true, lowercase: true, trim: true },
     password: { type: String, required: true, select: false },
     phone: { type: String, trim: true },
+    alternative_phone: { type: String, trim: true },
     role: { type: String, enum: ['admin', 'technician', 'attendant'], default: 'attendant' },
     is_active: { type: Boolean, default: true },
+    preferences: {
+      orders_view: { type: String, enum: ['kanban', 'workspace', 'table'], default: 'kanban' },
+      workspace_order: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+    },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );

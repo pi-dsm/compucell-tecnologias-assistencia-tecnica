@@ -1,5 +1,10 @@
 const router = require('express').Router();
-const { authenticate } = require('../middleware/auth');
+const c = require('../controllers/dashboard.controller');
+const { authenticate, authorize } = require('../middleware/auth');
 
-router.get('/', authenticate, require('../controllers/dashboard.controller').summary);
+router.use(authenticate);
+router.get('/summary', c.summary);
+router.get('/goals', c.getGoals);
+router.put('/goals', authorize('admin'), c.updateGoals);
+
 module.exports = router;
