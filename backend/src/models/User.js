@@ -6,6 +6,7 @@ const schema = new mongoose.Schema(
     email: { type: String, required: [true, 'E-mail é obrigatório'], unique: true, lowercase: true, trim: true },
     password: { type: String, required: true, select: false },
     phone: { type: String, trim: true },
+    alternative_phone: { type: String, trim: true },
     role: { type: String, enum: ['admin', 'technician', 'attendant'], default: 'attendant' },
     is_active: { type: Boolean, default: true },
     preferences: {

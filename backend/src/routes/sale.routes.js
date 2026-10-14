@@ -7,6 +7,6 @@ router.post('/', c.create);
 router.get('/', c.list);
 router.get('/:id', c.get);
 router.post('/:id/payments', c.addPayment);
-router.patch('/:id/refund', authorize('admin'), c.refund);
+router.patch('/:id/refund', authenticate, c.refund);
 
 module.exports = router;

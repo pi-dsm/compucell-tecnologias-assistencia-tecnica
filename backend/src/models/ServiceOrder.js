@@ -12,7 +12,6 @@ const STATUSES = [...OPEN_STATUSES, ...CLOSED_STATUSES];
 
 const partSchema = new Schema(
   {
-    part_id: { type: Schema.Types.ObjectId, default: () => new Types.ObjectId() },
     part_name: { type: String, required: [true, 'Nome da peça é obrigatório'], trim: true },
     is_own_stock: { type: Boolean, default: false }, // fornecedor próprio => custo zero
     supplier_name: { type: String, trim: true },

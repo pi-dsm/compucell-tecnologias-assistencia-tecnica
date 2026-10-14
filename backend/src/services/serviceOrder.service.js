@@ -10,7 +10,7 @@ const { netPaid, normalizePayments } = require('../utils/payments');
 const CUSTOMER_FIELDS = ['name', 'phone', 'alternative_phone'];
 const DEVICE_FIELDS = ['device_type', 'brand', 'model', 'passcode' ];
 const PART_FIELDS = [
-  'description', 'is_own_stock', 'supplier_name', 'supplier_contact', 'purchase_reference',
+  'part_name', 'is_own_stock', 'supplier_name', 'supplier_contact', 'purchase_reference',
   'cost_price', 'sale_price', 'quantity', 'warranty_days',
 ];
 // Mudanças "rápidas" (sem dados obrigatórios). 'ready' e 'delivered' têm fluxo próprio.
