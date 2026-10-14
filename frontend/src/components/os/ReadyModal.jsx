@@ -122,14 +122,11 @@ export default function ReadyModal({ order, onClose, onSaved }) {
                   </>
                 )}
 
-                <Field label="Valor de venda (R$) *" className="sm:col-span-2">
+                <Field label="Valor de venda (R$) *" className="sm:col-span-3">
                   <input className={inputCls} type="number" min="0" step="0.01" value={p.sale_price} onChange={(e) => update(p.key, { sale_price: e.target.value })} />
                 </Field>
-                <Field label="Garantia da peça (dias)" className="sm:col-span-2">
+                <Field label="Garantia da peça (dias)" className="sm:col-span-3">
                   <input className={inputCls} type="number" min="0" value={p.warranty_days} onChange={(e) => update(p.key, { warranty_days: e.target.value })} />
-                </Field>
-                <Field label="Observações" className="sm:col-span-2">
-                  <input className={inputCls} value={p.notes} onChange={(e) => update(p.key, { notes: e.target.value })} />
                 </Field>
               </div>
             </div>

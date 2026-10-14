@@ -10,7 +10,7 @@ import { btnPrimary, EmptyState, inputCls, PageHeader, Spinner } from '../compon
 import KanbanView from '../components/os/KanbanView';
 import WorkspaceView from '../components/os/WorkspaceView';
 import TableView from '../components/os/TableView';
-// import OrderDetailsModal from '../components/os/OrderDetailsModal';
+import OrderDetailsModal from '../components/os/OrderDetailsModal';
 
 const VIEWS = [
   { key: 'kanban', label: 'Kanban', icon: Columns3 },
