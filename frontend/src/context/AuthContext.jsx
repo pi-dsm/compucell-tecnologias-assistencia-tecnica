@@ -29,5 +29,21 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  return <AuthCtx.Provider value={{ token, user, login, logout, isAdmin: user?.role === 'admin' }}>{children}</AuthCtx.Provider>;
+  const updatePreferences = async (patch) => {
+    setUser((prev) => {
+      const next = { ...prev, preferences: { ...prev?.preferences, ...patch } };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+    try {
+      await api.patch('/auth/me/preferences', patch);
+    } catch {
+    }
+  };
+
+  return (
+    <AuthCtx.Provider value={{ token, user, login, logout, updatePreferences, isAdmin: user?.role === 'admin' }}>
+      {children}
+    </AuthCtx.Provider>
+  );
 }

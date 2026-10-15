@@ -10,6 +10,8 @@ import NewSale from './pages/NewSale.jsx';
 import SalesHistory from './pages/SalesHistory.jsx';
 import Users from './pages/Users.jsx';
 import PublicTracking from './pages/PublicTracking.jsx';
+import Products from './pages/Products.jsx';
+import Services from './pages/Services.jsx';
 
 function Protected({ children, admin = false }) {
   const { token, isAdmin } = useAuth();
@@ -30,6 +32,8 @@ export default function App() {
         <Route path="ordens/:id" element={<ServiceOrderDetails />} />
         <Route path="vendas" element={<SalesHistory />} />
         <Route path="vendas/nova" element={<NewSale />} />
+        <Route path="produtos" element={<Products />} />
+        <Route path="servicos" element={<Services />} />
         <Route path="usuarios" element={<Protected admin><Users /></Protected>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
