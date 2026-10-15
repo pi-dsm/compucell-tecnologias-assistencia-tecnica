@@ -181,7 +181,7 @@ return (
                   <Field label="Telefone *">
                     <input className={inputCls} inputMode="tel" value={newCustomer.phone} onChange={(e) => setNewCustomer((s) => ({ ...s, phone: e.target.value }))} />
                   </Field>
-                  <Field label="Telefone alternativo">
+                  <Field label="Telefone alternativo *">
                     <input className={inputCls} inputMode="tel" value={newCustomer.alternative_phone} onChange={(e) => setNewCustomer((s) => ({ ...s, alternative_phone: e.target.value }))} />
                   </Field>
                 </div>
