@@ -1,0 +1,25 @@
+name: Pipeline de Integração Contínua da aplicação
+
+# Gatilho on push: intercepta qualquer envio de código direcionado para as branches principais
+on:
+  push:
+    branches: [ main, master ]
+
+# Ações da pipeline
+jobs:
+  # O github disponibiliza uma máquina virtual zerada para executar as tarefas
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Baixa todo o código do repositório para dentro da máquina virtual temporária
+      - name: Baixar código fonte
+        uses: actions/checkout@v3
+
+      # Executa o comando de build do backend no Dockerfile
+      - name: Testar Build do Backend
+        run: docker build -t imagem-backend-teste ./backend
+
+      # Executa o comando de build do frontend no Dockerfile
+      - name: Testar Build do Frontend
+        run: docker build -t imagem-frontend-teste ./frontend
