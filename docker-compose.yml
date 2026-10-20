@@ -1,7 +1,7 @@
 # Guarda os conteiners que formam o ecossistema da aplicação
 # Cada service aqui vira um conteiner isolado em memória
 services:
-  web:
+  backend:
     # Seta o build do Docker Compose para o Dockerfile do diretório atual
     build:
       context: ./backend
