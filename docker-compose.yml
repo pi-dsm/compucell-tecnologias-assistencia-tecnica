@@ -3,10 +3,12 @@
 services:
   web:
     # Seta o build do Docker Compose para o Dockerfile do diretório atual
-    build: .
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     # Mapeia as portas
     ports:
-      - "8080:3000"
+      - "3000:3000"
     environment:
       # IMPORTANTE: Usamos 'db' em vez de 'localhost' para o app achar o container do MongoDB
       - MONGO_URI=mongodb://admin:senha123@db:27017/compucell_tecnologias_assistencia_tecnica?authSource=admin
@@ -14,6 +16,15 @@ services:
     # Aqui a aplicação só inicializa depois que o conteiner do banco de dados estiver operacional
     depends_on:
       - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
 
   db:
     image: mongo:6
@@ -24,7 +35,6 @@ services:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
-      - ./init.js:/docker-entrypoint-initdb.d/init.js
 
 # Todas as inserções de dados no banco persistirão no seu HD real mesmo que o container seja destruído.
 volumes:

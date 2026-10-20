@@ -13,9 +13,13 @@ jobs:
 
     steps:
       # Baixa todo o código do repositório para dentro da máquina virtual temporária
-      - name: Checkout
+      - name: Baixar código fonte
         uses: actions/checkout@v3
 
-      # Executa o comando de build no Dockerfile
-      - name: Docker Build
-        run: docker build -t imagem-teste-aplicacao .
+      # Executa o comando de build do backend no Dockerfile
+      - name: Testar Build do Backend
+        run: docker build -t imagem-backend-teste ./backend
+
+      # Executa o comando de build do frontend no Dockerfile
+      - name: Testar Build do Frontend
+        run: docker build -t imagem-frontend-teste ./frontend
