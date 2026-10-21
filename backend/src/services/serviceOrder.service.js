@@ -2,6 +2,7 @@ const Customer = require('../models/Customer');
 const Device = require('../models/Device');
 const ServiceOrder = require('../models/ServiceOrder');
 const company = require('../config/company');
+const { getCalendar } = require('./calendar.service');
 const { CLOSED_STATUSES } = ServiceOrder;
 const { pick, httpError } = require('../utils/helpers');
 const { round2, formatBRL } = require('../utils/money');
@@ -20,6 +21,25 @@ const addDays = (date, days) => new Date(date.getTime() + days * 86400000);
 const ensureOpen = (order) => {
   if (CLOSED_STATUSES.includes(order.status)) throw httpError(409, 'Esta OS já foi finalizada e não pode mais ser alterada.');
 };
+
+async function resolveDeadlines(body) {
+  const rules = [
+    ['budget_business_days', 'estimated_budget_at', 'orçamento'],
+    ['delivery_business_days', 'estimated_delivery_at', 'entrega'],
+  ];
+  const out = {};
+  let calendar;
+  for (const [input, target, label] of rules) {
+    if (body[input] === undefined) continue;
+    const days = Number(body[input]);
+    if (!Number.isInteger(days) || days < 0 || days > 90) {
+      throw httpError(400, `Prazo de ${label} inválido: informe de 0 a 90 dias úteis.`);
+    }
+    calendar = calendar || (await getCalendar());
+    out[target] = calendar.addBusinessDays(new Date(), days);
+  }
+  return out;
+}
 
 async function buildCustomer(body, userId) {
   if (body.customer_id) {
@@ -48,6 +68,7 @@ exports.openOrder = async (body, user) => {
   const device = await buildDevice(body, customer);
   const order = new ServiceOrder({
     ...pick(body, ['reported_issue', 'estimated_budget_at', 'estimated_delivery_at', 'internal_notes']),
+    ...(await resolveDeadlines(body)),
     customer: customer._id,
     device: device._id,
     status: 'received',
@@ -155,6 +176,7 @@ exports.registerReturn = async (original, body, user) => {
 
   const warrantyOrder = new ServiceOrder({
     ...pick(body, ['reported_issue', 'estimated_budget_at', 'estimated_delivery_at']),
+    ...(await resolveDeadlines(body)),
     customer: original.customer,
     device: original.device,
     origin_order: original._id,
