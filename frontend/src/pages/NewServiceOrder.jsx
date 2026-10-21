@@ -9,6 +9,7 @@ import DeadlineField, { deadlinePayload, isDeadlineValid, newDeadline } from '..
 import { btnGhost, btnPrimary, Card, Field, inputCls, PageHeader } from '../components/ui';
 import PatternPad from '../components/os/PatternPad';
 import ReceiptModal from '../components/os/ReceiptModal';
+import PatternPlayer from '../components/os/PatternPlayer';
 
 const blankCustomer = { name: '', phone: '', alternative_phone: '' };
 const blankDevice = { device_type: 'phone', brand: '', model: '' };
@@ -47,7 +48,17 @@ function PasscodeFields({ value, onChange }) {
           <input className={inputCls} value={value.written} onChange={(e) => set({ written: e.target.value })} />
         </Field>
       )}
-      {value.kind === 'pattern' && <PatternPad value={value.pattern} onChange={(pattern) => set({ pattern })} />}
+      {value.kind === 'pattern' && (
+        <div className="space-y-3">
+          <PatternPad value={value.pattern} onChange={(pattern) => set({ pattern })} />
+          {value.pattern.length >= 4 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Pré-visualização do padrão gravado</p>
+              <PatternPlayer pattern={value.pattern} autoPlay={false} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -235,10 +246,8 @@ export default function NewServiceOrder() {
             <Field label="Problema detectado *">
               <textarea className={inputCls} rows={4} value={form.reported_issue} onChange={(e) => setForm((s) => ({ ...s, reported_issue: e.target.value }))} />
             </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <DeadlineField label="Previsão de orçamento *" value={budget} onChange={setBudget} calendar={calendar} />
-              <DeadlineField label="Previsão de entrega *" value={delivery} onChange={setDelivery} calendar={calendar} />
-            </div>
+            <DeadlineField label="Previsão de orçamento *" value={budget} onChange={setBudget} calendar={calendar} />
+            <DeadlineField label="Previsão de entrega *" value={delivery} onChange={setDelivery} calendar={calendar} />
             <Field label="Observações internas" hint="Não aparecem no comprovante do cliente.">
               <textarea className={inputCls} rows={3} value={form.internal_notes} onChange={(e) => setForm((s) => ({ ...s, internal_notes: e.target.value }))} />
             </Field>

@@ -56,7 +56,7 @@ export default function DeadlineField({ label, value, onChange, calendar }) {
             <button type="button" className="font-semibold text-blue-700 underline" onClick={() => onChange(newDeadline(1))}>Voltar para dias úteis</button>
           </>
         ) : (
-          <>Previsto para <b className="capitalize">{pretty}</b> (sem fins de semana e feriados).</>
+          <>Previsto para <b className="capitalize">{pretty}</b>.</>
         )}
       </p>
       {nonBusiness && (

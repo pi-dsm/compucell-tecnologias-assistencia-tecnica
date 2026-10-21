@@ -11,6 +11,7 @@ import { btnBlue, btnGhost, btnPrimary, btnSm, Card, Field, Info, inputCls, Moda
 import PatternPad from './PatternPad';
 import ReceiptModal from './ReceiptModal';
 import StatusSelect from './StatusSelect';
+import PatternPlayer from './PatternPlayer';
 
 export default function OrderDetails({ id, onChanged, onOpenOrder }) {
   const toast = useToast();
@@ -149,7 +150,9 @@ export default function OrderDetails({ id, onChanged, onOpenOrder }) {
           </div>
           {showPass && passcode.kind === 'pin' && <p className="mt-3 rounded bg-slate-100 px-3 py-2 font-mono text-lg tracking-widest">{passcode.pin}</p>}
           {showPass && passcode.kind === 'written' && <p className="mt-3 rounded bg-slate-100 px-3 py-2 font-mono">{passcode.written}</p>}
-          {showPass && passcode.kind === 'pattern' && <div className="mt-3"><PatternPad value={passcode.pattern || []} readOnly /></div>}
+          {showPass && passcode.kind === 'pattern' && (
+            <div className="mt-3"><PatternPlayer pattern={passcode.pattern || []} /></div>
+          )}
         </Card>
       </div>
 
