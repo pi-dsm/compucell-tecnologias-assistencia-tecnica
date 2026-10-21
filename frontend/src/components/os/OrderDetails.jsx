@@ -4,7 +4,9 @@ import api, { errMsg } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import useStatusFlow from '../../hooks/useStatusFlow';
-import { brl, dateInputToISO, dateOnly, dt, DEVICE_TYPES, METHODS, PASSCODE_KINDS, STATUS, todayPlus } from '../../utils/format';
+import { brl, dateOnly, dt, DEVICE_TYPES, METHODS, PASSCODE_KINDS, STATUS } from '../../utils/format';
+import useHolidayCalendar from '../../hooks/useHolidayCalendar';
+import DeadlineField, { deadlinePayload, isDeadlineValid, newDeadline } from '../DeadlineField';
 import { btnBlue, btnGhost, btnPrimary, btnSm, Card, Field, Info, inputCls, Modal, PaymentBadge, Spinner, StatusBadge } from '../ui';
 import PatternPad from './PatternPad';
 import ReceiptModal from './ReceiptModal';
@@ -12,6 +14,8 @@ import StatusSelect from './StatusSelect';
 
 export default function OrderDetails({ id, onChanged, onOpenOrder }) {
   const toast = useToast();
+  const calendar = useHolidayCalendar();
+
   const { isAdmin } = useAuth();
   const [order, setOrder] = useState(null);
   const [notes, setNotes] = useState('');
@@ -69,12 +73,13 @@ export default function OrderDetails({ id, onChanged, onOpenOrder }) {
 
   const createReturn = async () => {
     if (!returnForm.reported_issue.trim()) return toast.error('Descreva o defeito apresentado');
+    if (!isDeadlineValid(returnForm.budget) || !isDeadlineValid(returnForm.delivery)) return toast.error('Informe as previsões de orçamento e de entrega');
     const res = await run(
       () =>
         api.post(`/service-orders/${id}/return`, {
           reported_issue: returnForm.reported_issue,
-          estimated_budget_at: dateInputToISO(returnForm.estimated_budget_at),
-          estimated_delivery_at: dateInputToISO(returnForm.estimated_delivery_at),
+          ...deadlinePayload(returnForm.budget, 'budget'),
+          ...deadlinePayload(returnForm.delivery, 'delivery'),
         }),
       'Retorno em garantia registrado'
     );
@@ -109,7 +114,7 @@ export default function OrderDetails({ id, onChanged, onOpenOrder }) {
           {order.status === 'delivered' && order.is_under_warranty && (
             <button
               className={`${btnBlue} ${btnSm}`}
-              onClick={() => setReturnForm({ reported_issue: '', estimated_budget_at: todayPlus(1), estimated_delivery_at: todayPlus(3) })}
+              onClick={() => setReturnForm({ reported_issue: '', budget: newDeadline(1), delivery: newDeadline(3) })}
             >
               <RotateCcw size={14} /> Registrar retorno
             </button>
@@ -276,12 +281,8 @@ export default function OrderDetails({ id, onChanged, onOpenOrder }) {
               <textarea className={inputCls} rows={3} value={returnForm.reported_issue} onChange={(e) => setReturnForm((s) => ({ ...s, reported_issue: e.target.value }))} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Previsão de orçamento">
-                <input type="date" className={inputCls} value={returnForm.estimated_budget_at} onChange={(e) => setReturnForm((s) => ({ ...s, estimated_budget_at: e.target.value }))} />
-              </Field>
-              <Field label="Previsão de entrega">
-                <input type="date" className={inputCls} value={returnForm.estimated_delivery_at} onChange={(e) => setReturnForm((s) => ({ ...s, estimated_delivery_at: e.target.value }))} />
-              </Field>
+              <DeadlineField label="Previsão de orçamento" value={returnForm.budget} onChange={(budget) => setReturnForm((s) => ({ ...s, budget }))} calendar={calendar} />
+              <DeadlineField label="Previsão de entrega" value={returnForm.delivery} onChange={(delivery) => setReturnForm((s) => ({ ...s, delivery }))} calendar={calendar} />
             </div>
           </div>
           <div className="mt-5 flex justify-end gap-2">
