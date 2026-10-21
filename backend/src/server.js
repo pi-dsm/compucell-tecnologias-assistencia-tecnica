@@ -34,10 +34,11 @@ app.use('/api/v1/customers', require('./routes/customer.routes'));
 app.use('/api/v1/devices', require('./routes/device.routes'));
 app.use('/api/v1/products', require('./routes/product.routes'));
 app.use('/api/v1/services', require('./routes/service.routes'));
+app.use('/api/v1/holidays', require('./routes/holiday.routes'));
 
 app.use((req, res) => res.status(404).json({ message: 'Rota não encontrada' }));
 
-const FIELD_LABELS = { email: 'e-mail', barcode: 'código de barras', name: 'nome' };
+const FIELD_LABELS = { email: 'e-mail', barcode: 'código de barras', name: 'nome', date: 'data', document_digits: 'CNPJ/CPF' };
 
 app.use((err, req, res, next) => {
   if (err.name === 'ValidationError') {
@@ -46,7 +47,7 @@ app.use((err, req, res, next) => {
   if (err.name === 'CastError') return res.status(400).json({ message: `Valor inválido para "${err.path}"` });
    if (err.code === 11000) {
     const field = Object.keys(err.keyPattern || {})[0];
-    return res.status(409).json({ message: `Já existe um registro com este ${FIELD_LABELS[field] || field || 'valor'}.` });
+    return res.status(409).json({ message: `Já existe um registro com o mesmo valor no campo "${FIELD_LABELS[field] || field || 'valor'}".` });
   }
   if (!err.status) console.error(err);
   res.status(err.status || 500).json({ message: err.status ? err.message : 'Erro interno do servidor' });
