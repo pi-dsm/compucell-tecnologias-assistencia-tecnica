@@ -12,6 +12,7 @@ import Users from './pages/Users.jsx';
 import PublicTracking from './pages/PublicTracking.jsx';
 import Products from './pages/Products.jsx';
 import Services from './pages/Services.jsx';
+import Holidays from './pages/Holidays.jsx';
 
 function Protected({ children, admin = false }) {
   const { token, isAdmin } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="produtos" element={<Products />} />
         <Route path="servicos" element={<Services />} />
         <Route path="usuarios" element={<Protected admin><Users /></Protected>} />
+        <Route path="feriados" element={<Protected admin><Holidays /></Protected>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
