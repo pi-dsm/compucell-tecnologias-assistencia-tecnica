@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, ShoppingCart, Receipt, Package, Tags, Users, LogOut, Menu, X, Search } from 'lucide-react';
+import { LayoutDashboard, Wrench, ShoppingCart, Receipt, Package, Tags, Users, LogOut, Menu, X, Search, CalendarOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/format';
 
@@ -29,7 +29,16 @@ export default function Layout() {
   const navigate = useNavigate();
 
   const groups = isAdmin
-    ? [...GROUPS, { title: 'Administração', links: [{ to: '/usuarios', label: 'Usuários', icon: Users }] }]
+    ? [
+        ...GROUPS,
+        {
+          title: 'Administração',
+          links: [
+            { to: '/usuarios', label: 'Usuários', icon: Users },
+            { to: '/feriados', label: 'Feriados', icon: CalendarOff },
+          ],
+        },
+      ]
     : GROUPS;
 
   const handleLogout = () => {

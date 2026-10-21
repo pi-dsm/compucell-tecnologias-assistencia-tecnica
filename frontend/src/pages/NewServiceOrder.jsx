@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { UserCheck } from 'lucide-react';
 import api, { errMsg } from '../services/api';
 import { useToast } from '../context/ToastContext';
-import { DEVICE_TYPES, PASSCODE_KINDS, dateInputToISO, todayPlus } from '../utils/format';
+import { DEVICE_TYPES, PASSCODE_KINDS } from '../utils/format';
+import useHolidayCalendar from '../hooks/useHolidayCalendar';
+import DeadlineField, { deadlinePayload, isDeadlineValid, newDeadline } from '../components/DeadlineField';
 import { btnGhost, btnPrimary, Card, Field, inputCls, PageHeader } from '../components/ui';
 import PatternPad from '../components/os/PatternPad';
 import ReceiptModal from '../components/os/ReceiptModal';
+import PatternPlayer from '../components/os/PatternPlayer';
 
 const blankCustomer = { name: '', phone: '', alternative_phone: '' };
 const blankDevice = { device_type: 'phone', brand: '', model: '' };
@@ -45,7 +48,17 @@ function PasscodeFields({ value, onChange }) {
           <input className={inputCls} value={value.written} onChange={(e) => set({ written: e.target.value })} />
         </Field>
       )}
-      {value.kind === 'pattern' && <PatternPad value={value.pattern} onChange={(pattern) => set({ pattern })} />}
+      {value.kind === 'pattern' && (
+        <div className="space-y-3">
+          <PatternPad value={value.pattern} onChange={(pattern) => set({ pattern })} />
+          {value.pattern.length >= 4 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Pré-visualização do padrão gravado</p>
+              <PatternPlayer pattern={value.pattern} autoPlay={false} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -53,20 +66,21 @@ function PasscodeFields({ value, onChange }) {
 export default function NewServiceOrder() {
   const navigate = useNavigate();
   const toast = useToast();
+  const calendar = useHolidayCalendar();
 
   const [customer, setCustomer] = useState(null); // cliente já cadastrado
   const [newCustomer, setNewCustomer] = useState(blankCustomer);
   const [suggestions, setSuggestions] = useState([]);
   const [devices, setDevices] = useState([]);
-  const [deviceId, setDeviceId] = useState(''); 
+  const [deviceId, setDeviceId] = useState('');
   const [device, setDevice] = useState(blankDevice);
   const [passcode, setPasscode] = useState(blankPasscode);
   const [form, setForm] = useState({
     reported_issue: '',
-    estimated_budget_at: todayPlus(1),
-    estimated_delivery_at: todayPlus(3),
     internal_notes: '',
   });
+  const [budget, setBudget] = useState(newDeadline(1));
+  const [delivery, setDelivery] = useState(newDeadline(5));
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState(null);
 
@@ -115,7 +129,7 @@ export default function NewServiceOrder() {
     if (passcode.kind === 'written' && !passcode.written.trim()) return toast.error('Informe a senha escrita');
     if (passcode.kind === 'pattern' && passcode.pattern.length < 4) return toast.error('Desenhe o padrão com ao menos 4 pontos');
     if (!form.reported_issue.trim()) return toast.error('Informe o problema detectado');
-    if (!form.estimated_budget_at || !form.estimated_delivery_at) return toast.error('Informe as previsões de orçamento e de entrega');
+    if (!isDeadlineValid(budget) || !isDeadlineValid(delivery)) return toast.error('Informe as previsões de orçamento e de entrega');
 
     const body = {
       ...(customer ? { customer_id: customer.id } : { customer: newCustomer }),
@@ -123,8 +137,8 @@ export default function NewServiceOrder() {
         ? { device_id: deviceId, device: { passcode: passcodePayload(passcode) } }
         : { device: { ...device, passcode: passcodePayload(passcode) } }),
       reported_issue: form.reported_issue,
-      estimated_budget_at: dateInputToISO(form.estimated_budget_at),
-      estimated_delivery_at: dateInputToISO(form.estimated_delivery_at),
+      ...deadlinePayload(budget, 'budget'),
+      ...deadlinePayload(delivery, 'delivery'),
       internal_notes: form.internal_notes,
     };
 
@@ -140,7 +154,7 @@ export default function NewServiceOrder() {
     }
   };
 
-return (
+  return (
     <form onSubmit={submit} className="mx-auto max-w-5xl space-y-5">
       <PageHeader title="Nova ordem de serviço" subtitle="Campos marcados com * são obrigatórios." />
 
@@ -232,14 +246,8 @@ return (
             <Field label="Problema detectado *">
               <textarea className={inputCls} rows={4} value={form.reported_issue} onChange={(e) => setForm((s) => ({ ...s, reported_issue: e.target.value }))} />
             </Field>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Previsão de orçamento *">
-                <input type="date" className={inputCls} value={form.estimated_budget_at} onChange={(e) => setForm((s) => ({ ...s, estimated_budget_at: e.target.value }))} />
-              </Field>
-              <Field label="Previsão de entrega *">
-                <input type="date" className={inputCls} value={form.estimated_delivery_at} onChange={(e) => setForm((s) => ({ ...s, estimated_delivery_at: e.target.value }))} />
-              </Field>
-            </div>
+            <DeadlineField label="Previsão de orçamento *" value={budget} onChange={setBudget} calendar={calendar} />
+            <DeadlineField label="Previsão de entrega *" value={delivery} onChange={setDelivery} calendar={calendar} />
             <Field label="Observações internas" hint="Não aparecem no comprovante do cliente.">
               <textarea className={inputCls} rows={3} value={form.internal_notes} onChange={(e) => setForm((s) => ({ ...s, internal_notes: e.target.value }))} />
             </Field>
