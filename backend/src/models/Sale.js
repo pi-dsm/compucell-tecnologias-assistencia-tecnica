@@ -76,6 +76,12 @@ schema.virtual('payment_state').get(function () {
 schema.virtual('grand_total_formatted').get(function () {
   return formatBRL(this.grand_total_amount);
 });
+schema.virtual('short_id').get(function () {
+  return String(this._id).slice(-6).toUpperCase();
+});
+schema.virtual('gross_profit_amount').get(function () {
+  return round2(this.subtotal_amount - this.cost_total_amount);
+});
 
 schema.set('toJSON', { virtuals: true, versionKey: false });
 

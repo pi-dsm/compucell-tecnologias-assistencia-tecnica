@@ -14,14 +14,18 @@ const loadSale = async (id) => {
 };
 const respond = async (res, sale, status = 200) => res.status(status).json(await sale.populate(POPULATE));
 
+const PERIOD_MS = { '24h': 24 * 3600 * 1000, '7d': 7 * 24 * 3600 * 1000 };
+
 exports.create = asyncHandler(async (req, res) => {
   await respond(res, await flow.createSale(req.body, req.user), 201);
 });
 
 exports.list = asyncHandler(async (req, res) => {
-  const { from, to, q } = req.query;
+  const { from, to, q, period } = req.query;
   const filter = {};
-  if (from || to) {
+   if (PERIOD_MS[period]) {
+    filter.created_at = { $gte: new Date(Date.now() - PERIOD_MS[period]) };
+  } else if (from || to) {
     filter.created_at = {};
     if (from) filter.created_at.$gte = new Date(`${from}T00:00:00`);
     if (to) filter.created_at.$lte = new Date(`${to}T23:59:59.999`);
