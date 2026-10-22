@@ -1,6 +1,9 @@
 const Sale = require('../models/Sale');
 const flow = require('../services/sale.service');
 const { asyncHandler, parseLimit, httpError } = require('../utils/helpers');
+const { allocateItems } = require('../utils/saleReports');
+const { toKey } = require('../utils/businessDays');
+const { round2 } = require('../utils/money');
 
 const POPULATE = [
   { path: 'customer', select: 'name phone' },
@@ -46,4 +49,32 @@ exports.addPayment = asyncHandler(async (req, res) => {
 exports.refund = asyncHandler(async (req, res) => {
   const sale = await loadSale(req.params.id);
   await respond(res, await flow.refund(sale, req.body, req.user));
+});
+
+exports.itemRows = asyncHandler(async (req, res) => {
+  const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  const from = req.query.from || toKey(new Date());
+  const to = req.query.to || from;
+  if (!isDay(from) || !isDay(to)) throw httpError(400, 'Datas inválidas: use o formato AAAA-MM-DD');
+
+  const sales = await Sale.find({
+    created_at: { $gte: new Date(`${from}T00:00:00`), $lte: new Date(`${to}T23:59:59.999`) },
+  })
+    .sort({ created_at: -1 })
+    .select('sale_number created_at items subtotal_amount discount_amount')
+    .lean();
+
+  const rows = sales.flatMap((sale) =>
+    allocateItems(sale).map((row) => ({ ...row, sale_id: String(sale._id), sale_number: sale.sale_number, created_at: sale.created_at }))
+  );
+
+  const total_price = round2(rows.reduce((s, r) => s + r.total_price, 0));
+  const total_cost = round2(rows.reduce((s, r) => s + r.total_cost, 0));
+  const profit = round2(total_price - total_cost);
+  res.json({
+    from,
+    to,
+    rows,
+    totals: { items: rows.length, total_cost, total_price, profit, profit_pct: total_price > 0 ? round2((profit / total_price) * 100) : 0 },
+  });
 });
