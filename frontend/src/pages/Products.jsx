@@ -124,7 +124,7 @@ export default function Products() {
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-card">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>{['Produto', 'Código de barras', 'Categoria', 'Custo', 'Venda', 'Estoque', ''].map((h) => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr>
+              <tr>{['Produto', 'Código de barras', 'Categoria', 'Fornecedor', 'Custo', 'Venda', 'Estoque', ''].map((h) => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {items.map((p) => (
