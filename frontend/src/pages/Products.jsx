@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { brl, PRODUCT_CATEGORIES } from '../utils/format';
 import { btnGhost, btnPrimary, btnSm, ConfirmModal, EmptyState, Field, inputCls, Modal, PageHeader, Spinner } from '../components/ui';
+import SupplierSelect from '../components/SupplierSelect';
 
-const blank = { name: '', barcode: '', category: 'accessory', cost_price: '', sale_price: '', stock_quantity: '', min_stock: '' };
+const blank = { name: '', barcode: '', category: 'accessory', supplier: '', cost_price: '', sale_price: '', stock_quantity: '', min_stock: '' };
 
 export default function Products() {
   const toast = useToast();
@@ -49,6 +50,7 @@ export default function Products() {
       name: form.name,
       barcode: form.barcode.trim(),
       category: form.category,
+      supplier: form.supplier || '',
       cost_price: Number(form.cost_price) || 0,
       sale_price: Number(form.sale_price),
       min_stock: Number(form.min_stock) || 0,
@@ -130,6 +132,7 @@ export default function Products() {
                   <td className="px-3 py-2.5 font-semibold">{p.name}</td>
                   <td className="px-3 py-2.5 font-mono text-xs text-slate-500">{p.barcode}</td>
                   <td className="px-3 py-2.5">{PRODUCT_CATEGORIES[p.category]}</td>
+                  <td className="px-3 py-2.5 text-slate-500">{p.supplier?.name || '—'}</td>
                   <td className="px-3 py-2.5 text-slate-500">{brl(p.cost_price)}</td>
                   <td className="px-3 py-2.5 font-semibold">{brl(p.sale_price)}</td>
                   <td className="px-3 py-2.5">
@@ -141,7 +144,7 @@ export default function Products() {
                     {canEdit && (
                       <div className="flex justify-end gap-1.5">
                         <button className={`${btnGhost} ${btnSm}`} onClick={() => setStockFor(p)}><Boxes size={14} /> Estoque</button>
-                        <button className={`${btnGhost} ${btnSm}`} onClick={() => setForm({ ...p, cost_price: p.cost_price, sale_price: p.sale_price })} aria-label="Editar"><Pencil size={14} /></button>
+                        <button className={`${btnGhost} ${btnSm}`} onClick={() => setForm({ ...p, supplier: p.supplier?.id || '' })} aria-label="Editar"><Pencil size={14} /></button>
                         {isAdmin && <button className={`${btnGhost} ${btnSm} text-red-600`} onClick={() => setRemoving(p)} aria-label="Desativar"><Trash2 size={14} /></button>}
                       </div>
                     )}
@@ -177,6 +180,9 @@ export default function Products() {
               <select className={inputCls} value={form.category} onChange={(e) => setForm((s) => ({ ...s, category: e.target.value }))}>
                 {Object.entries(PRODUCT_CATEGORIES).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
               </select>
+            </Field>
+            <Field label="Fornecedor habitual">
+              <SupplierSelect optional value={form.supplier} onChange={(id) => setForm((s) => ({ ...s, supplier: id }))} />
             </Field>
             <Field label="Estoque mínimo (alerta)">
               <input className={inputCls} type="number" min="0" value={form.min_stock} onChange={(e) => setForm((s) => ({ ...s, min_stock: e.target.value }))} />

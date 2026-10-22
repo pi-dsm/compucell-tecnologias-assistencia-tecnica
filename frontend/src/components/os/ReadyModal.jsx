@@ -4,10 +4,11 @@ import api, { errMsg } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { brl, round2 } from '../../utils/format';
 import { btnGhost, btnPrimary, Field, inputCls, Modal } from '../ui';
+import SupplierSelect from '../SupplierSelect';
 
 const uid = () => Math.random().toString(36).slice(2);
 const blankPart = () => ({
-  key: uid(), part_name: '', is_own_stock: false, supplier_name: '', supplier_contact: '',
+  key: uid(), description: '', is_own_stock: false, supplier: '', supplier_name: '',
   purchase_reference: '', cost_price: '', sale_price: '', quantity: 1, warranty_days: '', notes: '',
 });
 
@@ -34,7 +35,7 @@ export default function ReadyModal({ order, onClose, onSaved }) {
         if (!p.part_name.trim()) return toast.error(`${n}: informe a descrição`);
         if (p.sale_price === '') return toast.error(`${n}: informe o valor de venda`);
         if (!p.is_own_stock) {
-          if (!p.supplier_name.trim()) return toast.error(`${n}: informe o fornecedor`);
+          if (!p.supplier) return toast.error(`${n}: selecione o fornecedor`);
           if (!p.purchase_reference.trim()) return toast.error(`${n}: informe a OS/nota de compra`);
           if (p.cost_price === '') return toast.error(`${n}: informe o custo de compra`);
         }
@@ -48,17 +49,16 @@ export default function ReadyModal({ order, onClose, onSaved }) {
         parts_used: noParts
           ? []
           : parts.map((p) => ({
-              part_name: p.part_name,
-              is_own_stock: p.is_own_stock,
-              supplier_name: p.supplier_name,
-              supplier_contact: p.supplier_contact,
-              purchase_reference: p.purchase_reference,
-              cost_price: p.is_own_stock ? 0 : Number(p.cost_price),
-              sale_price: Number(p.sale_price),
-              quantity: Number(p.quantity) || 1,
-              warranty_days: p.warranty_days === '' ? undefined : Number(p.warranty_days),
-              notes: p.notes,
-            })),
+            part_name: p.part_name,
+            is_own_stock: p.is_own_stock,
+            supplier: p.is_own_stock ? undefined : p.supplier,
+            purchase_reference: p.purchase_reference,
+            cost_price: p.is_own_stock ? 0 : Number(p.cost_price),
+            sale_price: Number(p.sale_price),
+            quantity: Number(p.quantity) || 1,
+            warranty_days: p.warranty_days === '' ? undefined : Number(p.warranty_days),
+            notes: p.notes,
+          })),
       });
       toast.success(`OS #${data.service_order_number} marcada como pronta`);
       onSaved(data);
@@ -107,11 +107,8 @@ export default function ReadyModal({ order, onClose, onSaved }) {
 
                 {!p.is_own_stock && (
                   <>
-                    <Field label="Fornecedor *" className="sm:col-span-3">
-                      <input className={inputCls} value={p.supplier_name} onChange={(e) => update(p.key, { supplier_name: e.target.value })} />
-                    </Field>
-                    <Field label="Contato do fornecedor" className="sm:col-span-3">
-                      <input className={inputCls} value={p.supplier_contact} onChange={(e) => update(p.key, { supplier_contact: e.target.value })} />
+                    <Field label="Fornecedor *" className="sm:col-span-6">
+                      <SupplierSelect value={p.supplier} fallbackName={p.supplier_name} onChange={(id) => update(p.key, { supplier: id })} />
                     </Field>
                     <Field label="OS / nota de compra *" className="sm:col-span-3">
                       <input className={inputCls} value={p.purchase_reference} onChange={(e) => update(p.key, { purchase_reference: e.target.value })} />
