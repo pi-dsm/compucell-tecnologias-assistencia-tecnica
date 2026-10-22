@@ -91,3 +91,27 @@ export const formatPhone = (v) => {
 
 export const paymentLabel = (p) =>
   `${METHODS[p.payment_method] || p.payment_method}${p.payment_method === 'credit_card' && p.installments > 1 ? ` ${p.installments}x` : ''}`;
+
+// "Hoje às 14:35" | "Ontem às 09:12" | "19/10/2026 às 09:12"
+export const friendlyDateTime = (d) => {
+  const date = new Date(d);
+  const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === new Date().toDateString()) return `Hoje às ${time}`;
+  if (date.toDateString() === new Date(Date.now() - 86400000).toDateString()) return `Ontem às ${time}`;
+  return `${date.toLocaleDateString('pt-BR')} às ${time}`;
+};
+
+// Formas de pagamento realmente recebidas: "Pix + Cartão de crédito 2x"
+export const salePaymentSummary = (sale) => {
+  const labels = [...new Set(sale.payments.filter((p) => p.payment_status === 'paid').map(paymentLabel))];
+  return labels.length ? labels.join(' + ') : 'Sem pagamento';
+};
+
+// Status do pagamento: Concluído | Pendência R$ X | Estornada
+export const saleStatus = (sale) => {
+  if (sale.refunded_amount > 0 && sale.refunded_amount + 0.001 >= sale.grand_total_amount) {
+    return { label: 'Estornada', cls: 'bg-red-50 text-red-700 ring-red-200' };
+  }
+  if (sale.balance_due > 0) return { label: `Pendência ${brl(sale.balance_due)}`, cls: 'bg-amber-50 text-amber-800 ring-amber-200' };
+  return { label: 'Concluído', cls: 'bg-emerald-50 text-emerald-800 ring-emerald-200' };
+};
