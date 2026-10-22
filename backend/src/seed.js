@@ -10,6 +10,7 @@ const Service = require('./models/Service');
 const ServiceOrder = require('./models/ServiceOrder');
 const Sale = require('./models/Sale');
 const Setting = require('./models/Setting');
+const Supplier = require('./models/Supplier');
 const { Counter } = require('./models/Counter');
 const { createSale } = require('./services/sale.service');
 
@@ -19,7 +20,7 @@ const daysAhead = (n) => daysAgo(-n);
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
   await Promise.all(
-    [User, Customer, Device, Product, StockMovement, Service, ServiceOrder, Sale, Setting, Counter].map((m) => m.deleteMany())
+    [User, Customer, Device, Product, StockMovement, Service, ServiceOrder, Sale, Setting, Counter, Supplier].map((m) => m.deleteMany())
   );
 
   // ── Usuários ──────────────────────────────────────────────
@@ -40,12 +41,18 @@ const daysAhead = (n) => daysAgo(-n);
     { customer: joao._id, device_type: 'tablet', brand: 'Apple', model: 'iPad 9', passcode: { kind: 'none' } },
   ]);
 
+  // ── Fornecedores ──────────────────────────────────────────
+  const [tecpecas, infoparts] = await Supplier.create([
+    { name: 'TecPeças Distribuidora', document: '11.222.333/0001-81', contact_name: 'Marcos', phone: '(11) 4002-8922', city: 'São Paulo', state: 'SP' },
+    { name: 'InfoParts Componentes', document: '45.678.912/0001-55', contact_name: 'Renata', phone: '(14) 3622-1100', city: 'Bauru', state: 'SP' },
+  ]);
+
   // ── Catálogo ──────────────────────────────────────────────
   const [pelicula, carregador, cabo, caderno, teclado, lampada] = await Product.create([
-    { name: 'Película 3D iPhone 13', barcode: '7891000000011', category: 'screen_protector', cost_price: 5, sale_price: 25, stock_quantity: 20, min_stock: 5 },
-    { name: 'Carregador USB-C 20W', barcode: '7891000000028', category: 'accessory', cost_price: 22, sale_price: 59.9, stock_quantity: 8, min_stock: 3 },
-    { name: 'Cabo Lightning 1m', barcode: '7891000000035', category: 'accessory', cost_price: 9, sale_price: 29.9, stock_quantity: 12, min_stock: 4 },
-    { name: 'Caderno 96 folhas', barcode: '7891000000042', category: 'stationery', cost_price: 8, sale_price: 18, stock_quantity: 15, min_stock: 5 },
+    { name: 'Película 3D iPhone 13', barcode: '7891000000011', category: 'screen_protector', supplier: tecpecas._id, cost_price: 5, sale_price: 25, stock_quantity: 20, min_stock: 5 },
+    { name: 'Carregador USB-C 20W', barcode: '7891000000028', category: 'accessory', supplier: infoparts._id, cost_price: 22, sale_price: 59.9, stock_quantity: 8, min_stock: 3 },
+    { name: 'Cabo Lightning 1m', barcode: '7891000000035', category: 'accessory', supplier: infoparts._id, cost_price: 9, sale_price: 29.9, stock_quantity: 12, min_stock: 4 },
+    { name: 'Caderno 96 folhas', barcode: '7891000000042', category: 'stationery', supplier: tecpecas._id, cost_price: 8, sale_price: 18, stock_quantity: 15, min_stock: 5 },
     { name: 'Teclado USB ABNT2', barcode: '7891000000059', category: 'keyboard', cost_price: 35, sale_price: 79.9, stock_quantity: 2, min_stock: 3 },
     { name: 'Lâmpada LED 9W', barcode: '7891000000066', category: 'lighting', cost_price: 4, sale_price: 12, stock_quantity: 30, min_stock: 10 },
   ]);
@@ -85,7 +92,7 @@ const daysAhead = (n) => daysAgo(-n);
     return order;
   }
 
-  const screenPart = { part_name: 'Tela Galaxy A54', supplier_name: 'TecPeças', supplier_contact: '(11) 4002-8922', purchase_reference: 'NF-8812', cost_price: 150, sale_price: 280, quantity: 1, warranty_days: 90 };
+  const screenPart = { part_name: 'Tela Galaxy A54', supplier: tecpecas._id, supplier_name: tecpecas.name, supplier_contact: 'Marcos · (11) 4002-8922', purchase_reference: 'NF-8812', cost_price: 150, sale_price: 280, quantity: 1, warranty_days: 90 };
 
   await makeOrder({ customer: joao, device: iphone, issue: 'Tela não responde ao toque', status: 'received', created: daysAgo(5), deliveryIn: 2 });
   await makeOrder({ customer: maria, device: galaxy, issue: 'Bateria descarrega muito rápido', status: 'in_diagnosis', created: daysAgo(2), updated: daysAgo(1) });
@@ -104,12 +111,12 @@ const daysAhead = (n) => daysAgo(-n);
   await makeOrder({
     customer: maria, device: galaxy, issue: 'Tela voltou a falhar (retorno)', status: 'delivered', created: daysAgo(3), updated: daysAgo(2),
     is_warranty: true, origin_order: original._id, delivered_at: daysAgo(2), warranty_days: 30, warranty_until: daysAhead(28),
-    parts: [{ part_name: 'Flat da tela', supplier_name: 'InfoParts', purchase_reference: 'NF-9001', cost_price: 35, sale_price: 0, quantity: 1 }],
+    parts: [{ part_name: 'Flat da tela', supplier: infoparts._id, purchase_reference: 'NF-9001', cost_price: 35, sale_price: 0, quantity: 1 }],
     notes: `Retorno em garantia da OS #${original.service_order_number}.`,
   });
   await makeOrder({
     customer: carlos, device: dell, issue: 'Troca de fonte', status: 'delivered', created: daysAgo(5), updated: daysAgo(1),
-    parts: [{ part_name: 'Fonte 65W', supplier_name: 'InfoParts', purchase_reference: 'NF-7733', cost_price: 90, sale_price: 180, quantity: 1 }],
+    parts: [{ part_name: 'Fonte 65W', supplier: infoparts._id, purchase_reference: 'NF-7733', cost_price: 90, sale_price: 180, quantity: 1 }],
     labor: 40, delivered_at: daysAgo(1), warranty_days: 90, warranty_until: daysAhead(89),
     payments: [{ amount: 120, payment_method: 'cash', paid_at: daysAgo(1) }], // saldo pendente de R$ 100,00
   });

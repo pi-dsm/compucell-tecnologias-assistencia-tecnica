@@ -10,6 +10,7 @@ const schema = new Schema(
     barcode: { type: String, required: [true, 'Código de barras é obrigatório'], unique: true, trim: true },
     category: { type: String, enum: { values: CATEGORIES, message: 'Categoria inválida' }, default: 'other' },
     description: { type: String, trim: true },
+    supplier: { type: Schema.Types.ObjectId, ref: 'Supplier' },
     cost_price: { type: Number, min: [0, 'Custo inválido'], default: 0 },
     sale_price: { type: Number, required: [true, 'Preço de venda é obrigatório'], min: [0, 'Preço inválido'] },
     stock_quantity: {

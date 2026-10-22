@@ -14,6 +14,7 @@ const partSchema = new Schema(
   {
     part_name: { type: String, required: [true, 'Nome da peça é obrigatório'], trim: true },
     is_own_stock: { type: Boolean, default: false }, // fornecedor próprio => custo zero
+    supplier: { type: Schema.Types.ObjectId, ref: 'Supplier' },
     supplier_name: { type: String, trim: true },
     supplier_contact: { type: String, trim: true },
     purchase_reference: { type: String, trim: true }, // OS / nota de compra no fornecedor
@@ -28,11 +29,12 @@ const partSchema = new Schema(
 partSchema.pre('validate', function (next) {
   if (this.is_own_stock) {
     this.cost_price = 0;
+    this.supplier = undefined;
     this.supplier_name = undefined;
     this.supplier_contact = undefined;
     this.purchase_reference = undefined;
   } else {
-    if (!this.supplier_name) this.invalidate('supplier_name', 'Informe o fornecedor da peça');
+    if (!this.supplier) this.invalidate('supplier', 'Selecione o fornecedor da peça');
     if (!this.purchase_reference) this.invalidate('purchase_reference', 'Informe a OS/nota de compra da peça');
   }
   next();

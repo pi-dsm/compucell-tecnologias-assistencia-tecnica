@@ -70,3 +70,21 @@ export const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 // Ordem de entrega prevista já passou e a OS ainda está aberta?
 export const isOverdue = (order) =>
   OPEN_STATUSES.includes(order.status) && order.estimated_delivery_at && new Date(order.estimated_delivery_at) < new Date(new Date().toDateString());
+
+export const BR_STATES = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+
+export const onlyDigits = (v) => String(v || '').replace(/\D/g, '');
+
+export const formatDocument = (v) => {
+  const d = onlyDigits(v);
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return v || '';
+};
+
+export const formatPhone = (v) => {
+  const d = onlyDigits(v);
+  if (d.length === 11) return d.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  return v || '';
+};
