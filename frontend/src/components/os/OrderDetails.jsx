@@ -12,6 +12,8 @@ import PatternPad from './PatternPad';
 import ReceiptModal from './ReceiptModal';
 import StatusSelect from './StatusSelect';
 import PatternPlayer from './PatternPlayer';
+import { paymentLabel } from '../../utils/format';
+
 
 export default function OrderDetails({ id, onChanged, onOpenOrder }) {
   const toast = useToast();
@@ -233,8 +235,7 @@ export default function OrderDetails({ id, onChanged, onOpenOrder }) {
           <ul className="divide-y divide-slate-100 text-sm">
             {order.payments.map((p) => (
               <li key={p.id} className="flex justify-between py-1.5">
-                <span>{METHODS[p.payment_method]} · {dt(p.paid_at)}{p.payment_status === 'refunded' && ' (estorno)'}</span>
-                <b>{brl(p.amount)}</b>
+                <span>{paymentLabel(p)} · {dt(p.paid_at)}{p.payment_status === 'refunded' && ' (estorno)'}</span>                <b>{brl(p.amount)}</b>
               </li>
             ))}
           </ul>

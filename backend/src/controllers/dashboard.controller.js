@@ -3,6 +3,7 @@ const Sale = require('../models/Sale');
 const Setting = require('../models/Setting');
 const { asyncHandler, httpError } = require('../utils/helpers');
 const { round2 } = require('../utils/money');
+const { allocateItems } = require('../utils/saleReports');
 
 const PERIODS = ['daily', 'weekly', 'monthly'];
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -32,8 +33,8 @@ function buildBuckets(period) {
   return out;
 }
 
-async function getGoals() {
-  const doc = await Setting.findOne({ key: 'goals' }).lean();
+async function getGoals(scope) {
+  const doc = await Setting.findOne({ key: scope === 'sales' ? 'sales_goals' : 'goals' }).lean();
   return { daily: 0, weekly: 0, monthly: 0, ...(doc?.value || {}) };
 }
 
@@ -136,7 +137,7 @@ exports.summary = asyncHandler(async (req, res) => {
   });
 });
 
-exports.getGoals = asyncHandler(async (req, res) => res.json(await getGoals()));
+exports.getGoals = asyncHandler(async (req, res) => res.json(await getGoals(req.query.scope)));
 
 exports.updateGoals = asyncHandler(async (req, res) => {
   const goals = {};
@@ -145,6 +146,95 @@ exports.updateGoals = asyncHandler(async (req, res) => {
     if (!(value >= 0)) throw httpError(400, 'Meta inválida: informe um valor maior ou igual a zero');
     goals[key] = round2(value);
   }
-  await Setting.findOneAndUpdate({ key: 'goals' }, { value: goals }, { upsert: true, new: true });
+
+  const key = req.query.scope === 'sales' ? 'sales_goals' : 'goals';
+  await Setting.findOneAndUpdate({ key }, { value: goals }, { upsert: true, new: true });
   res.json(goals);
+});
+
+// Valores "vendidos" (competência): já líquidos do desconto, na data da venda. Não é o caixa recebido.
+exports.salesAnalytics = asyncHandler(async (req, res) => {
+  const period = PERIODS.includes(req.query.period) ? req.query.period : 'daily';
+  const buckets = buildBuckets(period);
+  const from = buckets[0].start;
+
+  const [sales, goals] = await Promise.all([
+    Sale.find({ created_at: { $gte: from } }).select('created_at items subtotal_amount discount_amount payments').lean(),
+    getGoals('sales'),
+  ]);
+  const target = goals[period] || 0;
+
+  const rows = buckets.map((b) => ({
+    label: b.label, goal: target, sales_count: 0, items_sold: 0,
+    products_revenue: 0, services_revenue: 0, products_profit: 0, services_profit: 0,
+    products_qty: 0, services_qty: 0, revenue: 0, profit: 0,
+  }));
+  const at = (d) => buckets.findIndex((b) => d >= b.start && d < b.end);
+  const topProducts = new Map();
+  const topServices = new Map();
+  const methods = new Map();
+
+  sales.forEach((sale) => {
+    const i = at(new Date(sale.created_at));
+    if (i < 0) return;
+    rows[i].sales_count += 1;
+    allocateItems(sale).forEach((it) => {
+      const kind = it.item_type === 'product' ? 'products' : 'services';
+      rows[i][`${kind}_revenue`] += it.total_price;
+      rows[i][`${kind}_profit`] += it.profit;
+      rows[i][`${kind}_qty`] += it.quantity;
+      rows[i].items_sold += it.quantity;
+      const map = kind === 'products' ? topProducts : topServices;
+      const cur = map.get(it.name) || { name: it.name, revenue: 0, profit: 0, quantity: 0 };
+      cur.revenue += it.total_price;
+      cur.profit += it.profit;
+      cur.quantity += it.quantity;
+      map.set(it.name, cur);
+    });
+    (sale.payments || []).forEach((p) => {
+      if (p.payment_status !== 'paid') return;
+      const cur = methods.get(p.payment_method) || { method: p.payment_method, amount: 0, count: 0 };
+      cur.amount += p.amount;
+      cur.count += 1;
+      methods.set(p.payment_method, cur);
+    });
+  });
+
+  rows.forEach((r) => {
+    r.revenue = round2(r.products_revenue + r.services_revenue);
+    r.profit = round2(r.products_profit + r.services_profit);
+    ['products_revenue', 'services_revenue', 'products_profit', 'services_profit'].forEach((k) => (r[k] = round2(r[k])));
+  });
+
+  const current = rows[rows.length - 1];
+  const previous = rows[rows.length - 2];
+  const pct = (a, b) => (b > 0 ? round2((a / b) * 100) : 0);
+  const part = (kind) => ({
+    revenue: current[`${kind}_revenue`],
+    profit: current[`${kind}_profit`],
+    quantity: current[`${kind}_qty`],
+    margin_pct: pct(current[`${kind}_profit`], current[`${kind}_revenue`]),
+    share_pct: pct(current[`${kind}_revenue`], current.revenue),
+  });
+  const rank = (map) => [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5).map((r) => ({ ...r, revenue: round2(r.revenue), profit: round2(r.profit) }));
+
+  res.json({
+    period,
+    series: rows,
+    current: {
+      ...current,
+      margin_pct: pct(current.profit, current.revenue),
+      avg_ticket: current.sales_count > 0 ? round2(current.revenue / current.sales_count) : 0,
+    },
+    previous,
+    delta_revenue_pct: previous.revenue > 0 ? round2(((current.revenue - previous.revenue) / previous.revenue) * 100) : null,
+    split: { products: part('products'), services: part('services') },
+    goal: {
+      target,
+      progress: target > 0 ? round2((current.revenue / target) * 100) : null,
+      remaining: target > 0 ? round2(Math.max(0, target - current.revenue)) : null,
+    },
+    top: { products: rank(topProducts), services: rank(topServices) },
+    methods: [...methods.values()].sort((a, b) => b.amount - a.amount).map((m) => ({ ...m, amount: round2(m.amount) })),
+  });
 });

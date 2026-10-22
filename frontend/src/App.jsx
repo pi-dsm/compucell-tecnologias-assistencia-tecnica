@@ -14,6 +14,7 @@ import Products from './pages/Products.jsx';
 import Services from './pages/Services.jsx';
 import Holidays from './pages/Holidays.jsx';
 import Suppliers from './pages/Suppliers.jsx';
+import SalesDaily from './pages/SalesDaily.jsx';
 
 function Protected({ children, admin = false }) {
   const { token, isAdmin } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="ordens/:id" element={<ServiceOrderDetails />} />
         <Route path="vendas" element={<SalesHistory />} />
         <Route path="vendas/nova" element={<NewSale />} />
+        <Route path="vendas/detalhado" element={<Protected admin><SalesDaily /></Protected>} />
         <Route path="produtos" element={<Products />} />
         <Route path="servicos" element={<Services />} />
         <Route path="fornecedores" element={<Suppliers />} />

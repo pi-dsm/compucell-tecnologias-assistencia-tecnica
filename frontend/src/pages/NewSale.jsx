@@ -23,6 +23,7 @@ export default function NewSale() {
   const [customerQ, setCustomerQ] = useState('');
   const [customerResults, setCustomerResults] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState('');
 
   const commit = (next) => {
     cartRef.current = next;
@@ -31,7 +32,7 @@ export default function NewSale() {
   const focusScan = () => scanRef.current?.focus();
 
   useEffect(() => {
-    api.get('/services').then((r) => setServices(r.data)).catch(() => {});
+    api.get('/services').then((r) => setServices(r.data)).catch(() => { });
     focusScan();
   }, []);
 
@@ -128,6 +129,7 @@ export default function NewSale() {
         payments: paymentsPayload(payments),
         allow_partial: allowPartial,
         customer_id: customer?.id,
+        notes: notes.trim() || undefined,
       });
       toast.success(`Venda #${data.sale_number} registrada — ${brl(data.grand_total_amount)}`);
       commit([]);
@@ -136,6 +138,7 @@ export default function NewSale() {
       setAllowPartial(false);
       setCustomer(null);
       setCustomerQ('');
+      setNotes('');
       focusScan();
     } catch (err) {
       toast.error(errMsg(err));
@@ -273,6 +276,7 @@ export default function NewSale() {
                 <input className={`${inputCls} w-28 text-right`} type="number" min="0" step="0.01" max={subtotal} value={discount} onChange={(e) => setDiscount(e.target.value)} />
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-2 text-xl font-extrabold text-ink-900"><span>Total</span><span>{brl(total)}</span></div>
+              <textarea className={`${inputCls} mt-3`} rows={2} placeholder="Observações da venda (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
 
             <div className="mt-4">

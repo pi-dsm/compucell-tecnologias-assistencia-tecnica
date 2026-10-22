@@ -27,8 +27,8 @@ function normalizePayments(list) {
     const amount = round2(p.amount);
     if (!(amount > 0)) throw httpError(400, 'Informe um valor maior que zero em cada pagamento');
     if (!PAYMENT_METHODS.includes(p.payment_method)) throw httpError(400, 'Forma de pagamento inválida');
-    return { amount, payment_method: p.payment_method, payment_status: 'paid', paid_at: new Date(), notes: p.notes };
-  });
+    const installments = p.payment_method === 'credit_card' ? Math.min(12, Math.max(1, parseInt(p.installments, 10) || 1)) : 1;
+    return { amount, payment_method: p.payment_method, installments, payment_status: 'paid', paid_at: new Date(), notes: p.notes };  });
 }
 
 module.exports = { netPaid, paymentState, normalizePayments };
