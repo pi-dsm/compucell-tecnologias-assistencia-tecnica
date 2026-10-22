@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const c = require('../controllers/sale.controller');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 
 router.use(authenticate);
 router.post('/', c.create);

@@ -5,11 +5,19 @@ import { btnGhost, btnSm, inputCls } from './ui';
 export const emptyPayment = (amount = '') => ({
   key: Math.random().toString(36).slice(2),
   payment_method: 'pix',
+  installments: 1,
   amount,
 });
+
 export const sumPayments = (list) => round2(list.reduce((s, p) => s + (Number(p.amount) || 0), 0));
 export const paymentsPayload = (list) =>
-  list.filter((p) => Number(p.amount) > 0).map((p) => ({ amount: Number(p.amount), payment_method: p.payment_method }));
+  list
+    .filter((p) => Number(p.amount) > 0)
+    .map((p) => ({
+      amount: Number(p.amount),
+      payment_method: p.payment_method,
+      ...(p.payment_method === 'credit_card' ? { installments: Number(p.installments) || 1 } : {}),
+    }));
 
 // due = valor a receber agora. Mostra o que ainda falta.
 export default function PaymentsEditor({ value, onChange, due }) {
@@ -20,9 +28,14 @@ export default function PaymentsEditor({ value, onChange, due }) {
     <div className="space-y-2">
       {value.map((p) => (
         <div key={p.key} className="flex flex-wrap items-center gap-2">
-          <select className={`${inputCls} w-auto`} value={p.payment_method} onChange={(e) => update(p.key, { payment_method: e.target.value })}>
+          <select className={`${inputCls} w-auto`} value={p.payment_method} onChange={(e) => update(p.key, { payment_method: e.target.value, installments: 1 })}>
             {Object.entries(METHODS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
+          {p.payment_method === 'credit_card' && (
+            <select className={`${inputCls} w-auto`} value={p.installments} onChange={(e) => update(p.key, { installments: Number(e.target.value) })} aria-label="Parcelas">
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
+            </select>
+          )}
           <input
             className={`${inputCls} w-32`}
             type="number"

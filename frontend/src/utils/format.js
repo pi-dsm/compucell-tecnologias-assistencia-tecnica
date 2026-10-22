@@ -88,3 +88,6 @@ export const formatPhone = (v) => {
   if (d.length === 10) return d.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
   return v || '';
 };
+
+export const paymentLabel = (p) =>
+  `${METHODS[p.payment_method] || p.payment_method}${p.payment_method === 'credit_card' && p.installments > 1 ? ` ${p.installments}x` : ''}`;
