@@ -15,6 +15,7 @@ import Services from './pages/Services.jsx';
 import Holidays from './pages/Holidays.jsx';
 import Suppliers from './pages/Suppliers.jsx';
 import SalesDaily from './pages/SalesDaily.jsx';
+import SalesDashboard from './pages/SalesDashboard.jsx';
 
 function Protected({ children, admin = false }) {
   const { token, isAdmin } = useAuth();
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="vendas" element={<SalesHistory />} />
         <Route path="vendas/nova" element={<NewSale />} />
         <Route path="vendas/detalhado" element={<Protected admin><SalesDaily /></Protected>} />
+        <Route path="vendas/dashboard" element={<Protected admin><SalesDashboard /></Protected>} />
         <Route path="produtos" element={<Products />} />
         <Route path="servicos" element={<Services />} />
         <Route path="fornecedores" element={<Suppliers />} />
