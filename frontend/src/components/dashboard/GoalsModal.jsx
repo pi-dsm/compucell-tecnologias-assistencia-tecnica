@@ -3,7 +3,7 @@ import api, { errMsg } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { btnGhost, btnPrimary, Field, inputCls, Modal } from '../ui';
 
-export default function GoalsModal({ goals, onClose, onSaved }) {
+export default function GoalsModal({ goals, onClose, onSaved, scope = 'general', title = 'Metas de faturamento' }) {
   const toast = useToast();
   const [form, setForm] = useState({ daily: goals.daily || '', weekly: goals.weekly || '', monthly: goals.monthly || '' });
   const [saving, setSaving] = useState(false);
@@ -11,7 +11,11 @@ export default function GoalsModal({ goals, onClose, onSaved }) {
   const save = async () => {
     setSaving(true);
     try {
-      await api.put('/dashboard/goals', { daily: Number(form.daily) || 0, weekly: Number(form.weekly) || 0, monthly: Number(form.monthly) || 0 });
+      await api.put(
+        '/dashboard/goals',
+        { daily: Number(form.daily) || 0, weekly: Number(form.weekly) || 0, monthly: Number(form.monthly) || 0 },
+        { params: scope === 'sales' ? { scope: 'sales' } : undefined }
+      );
       toast.success('Metas atualizadas');
       onSaved();
     } catch (e) {
@@ -22,7 +26,7 @@ export default function GoalsModal({ goals, onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Metas de faturamento" onClose={onClose} size="sm">
+    <Modal title={title} onClose={onClose} size="sm">
       <p className="mb-3 text-sm text-slate-500">O progresso compara o faturamento recebido no período com a meta. Use 0 para desativar.</p>
       <div className="space-y-3">
         {[['daily', 'Meta diária (R$)'], ['weekly', 'Meta semanal — últimos 7 dias (R$)'], ['monthly', 'Meta mensal (R$)']].map(([key, label]) => (
