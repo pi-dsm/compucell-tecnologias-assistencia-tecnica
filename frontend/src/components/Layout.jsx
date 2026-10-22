@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, ShoppingCart, Receipt, Package, Tags, Users, LogOut, Menu, X, Search, CalendarOff } from 'lucide-react';
+import { LayoutDashboard, Wrench, ShoppingCart, Receipt, Package, Tags, Users, LogOut, Menu, X, Search, CalendarOff, Truck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/format';
 
@@ -19,6 +19,7 @@ const GROUPS = [
     links: [
       { to: '/produtos', label: 'Produtos e estoque', icon: Package },
       { to: '/servicos', label: 'Serviços', icon: Tags },
+      { to: '/fornecedores', label: 'Fornecedores', icon: Truck },
     ],
   },
 ];
@@ -30,15 +31,15 @@ export default function Layout() {
 
   const groups = isAdmin
     ? [
-        ...GROUPS,
-        {
-          title: 'Administração',
-          links: [
-            { to: '/usuarios', label: 'Usuários', icon: Users },
-            { to: '/feriados', label: 'Feriados', icon: CalendarOff },
-          ],
-        },
-      ]
+      ...GROUPS,
+      {
+        title: 'Administração',
+        links: [
+          { to: '/usuarios', label: 'Usuários', icon: Users },
+          { to: '/feriados', label: 'Feriados', icon: CalendarOff },
+        ],
+      },
+    ]
     : GROUPS;
 
   const handleLogout = () => {
@@ -47,8 +48,7 @@ export default function Layout() {
   };
 
   const linkCls = ({ isActive }) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-      isActive ? 'bg-orange-500 text-white shadow-card' : 'text-blue-100/80 hover:bg-ink-800 hover:text-white'
+    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive ? 'bg-orange-500 text-white shadow-card' : 'text-blue-100/80 hover:bg-ink-800 hover:text-white'
     }`;
 
   const nav = (
