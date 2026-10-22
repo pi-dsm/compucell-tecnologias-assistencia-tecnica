@@ -7,11 +7,12 @@ const { CLOSED_STATUSES } = ServiceOrder;
 const { pick, httpError } = require('../utils/helpers');
 const { round2, formatBRL } = require('../utils/money');
 const { netPaid, normalizePayments } = require('../utils/payments');
+const Supplier = require('../models/Supplier');
 
 const CUSTOMER_FIELDS = ['name', 'phone', 'alternative_phone'];
-const DEVICE_FIELDS = ['device_type', 'brand', 'model', 'passcode' ];
+const DEVICE_FIELDS = ['device_type', 'brand', 'model', 'passcode'];
 const PART_FIELDS = [
-  'part_name', 'is_own_stock', 'supplier_name', 'supplier_contact', 'purchase_reference',
+  'part_name', 'is_own_stock', 'supplier', 'purchase_reference',
   'cost_price', 'sale_price', 'quantity', 'warranty_days',
 ];
 // Mudanças "rápidas" (sem dados obrigatórios). 'ready' e 'delivered' têm fluxo próprio.
@@ -39,6 +40,18 @@ async function resolveDeadlines(body) {
     out[target] = calendar.addBusinessDays(new Date(), days);
   }
   return out;
+}
+
+async function attachSuppliers(parts) {
+  const ids = [...new Set(parts.filter((p) => !p.is_own_stock && p.supplier).map((p) => String(p.supplier)))];
+  const found = await Supplier.find({ _id: { $in: ids } }).select('name contact_name phone').lean();
+  const byId = new Map(found.map((s) => [String(s._id), s]));
+  return parts.map((p) => {
+    if (p.is_own_stock || !p.supplier) return p;
+    const s = byId.get(String(p.supplier));
+    if (!s) throw httpError(400, 'Fornecedor da peça não encontrado. Selecione um fornecedor cadastrado.');
+    return { ...p, supplier_name: s.name, supplier_contact: [s.contact_name, s.phone].filter(Boolean).join(' · ') };
+  });
 }
 
 async function buildCustomer(body, userId) {
@@ -104,10 +117,12 @@ exports.markReady = async (order, body, user) => {
     throw httpError(409, 'Só é possível marcar como pronta uma OS que está em conserto.');
   }
   const noParts = !!body.no_parts_used;
-  const parts = Array.isArray(body.parts_used) ? body.parts_used.map((p) => pick(p, PART_FIELDS)) : [];
+  let parts = Array.isArray(body.parts_used) ? body.parts_used.map((p) => pick(p, PART_FIELDS)) : [];
   if (!noParts && parts.length === 0) {
     throw httpError(400, 'Informe as peças utilizadas ou marque "Nenhuma peça foi utilizada".');
   }
+
+  if (!noParts) parts = await attachSuppliers(parts);
 
   order.no_parts_used = noParts;
   order.parts_used = noParts ? [] : parts;

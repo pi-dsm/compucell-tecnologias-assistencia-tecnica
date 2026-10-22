@@ -2,7 +2,7 @@ const Product = require('../models/Product');
 const StockMovement = require('../models/StockMovement');
 const { asyncHandler, pick, clean, escapeRegex, parseLimit, httpError } = require('../utils/helpers');
 
-const FIELDS = ['name', 'barcode', 'category', 'description', 'cost_price', 'sale_price', 'min_stock'];
+const FIELDS = ['name', 'barcode', 'category', 'description', 'supplier', 'cost_price', 'sale_price', 'min_stock'];
 
 exports.list = asyncHandler(async (req, res) => {
   const { q, category, low_stock, active } = req.query;
@@ -14,18 +14,18 @@ exports.list = asyncHandler(async (req, res) => {
     filter.$or = [{ name: rx }, { barcode: rx }];
   }
   if (low_stock === 'true') filter.$expr = { $lte: ['$stock_quantity', '$min_stock'] };
-  res.json(await Product.find(filter).sort({ name: 1 }).limit(parseLimit(req.query.limit, 100, 500)));
+  res.json(await Product.find(filter).sort({ name: 1 }).limit(parseLimit(req.query.limit, 100, 500)).populate('supplier', 'name'));
 });
 
 // Leitura rápida por leitor de código de barras (correspondência exata)
 exports.getByBarcode = asyncHandler(async (req, res) => {
-  const product = await Product.findOne({ barcode: String(req.params.code).trim(), is_active: true });
+  const product = await Product.findOne({ barcode: String(req.params.code).trim(), is_active: true }).populate('supplier', 'name');
   if (!product) return res.status(404).json({ message: 'Produto não encontrado para este código de barras' });
   res.json(product);
 });
 
 exports.get = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
+  const product = await Product.findById(req.params.id).populate('supplier', 'name');
   if (!product) return res.status(404).json({ message: 'Produto não encontrado' });
   res.json(product);
 });
@@ -51,6 +51,7 @@ exports.update = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id);
   if (!product) return res.status(404).json({ message: 'Produto não encontrado' });
   product.set(pick(clean(req.body), FIELDS));
+  if (req.body.supplier === '' || req.body.supplier === null) product.supplier = undefined;
   if (req.body.is_active !== undefined) product.is_active = !!req.body.is_active;
   await product.save();
   res.json(product);
