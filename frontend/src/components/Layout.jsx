@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wrench, ShoppingCart, Receipt, Package, Tags, Users, LogOut, Menu, X, Search, CalendarOff, Truck } from 'lucide-react';
+import { LayoutDashboard, Wrench, ShoppingCart, Receipt, Package, Tags, Users, LogOut, Menu, X, Search, CalendarOff, Truck, ListOrdered, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES } from '../utils/format';
 
@@ -24,23 +24,27 @@ const GROUPS = [
   },
 ];
 
+const ANALYSIS = {
+  title: 'Análise',
+  links: [
+    { to: '/vendas/detalhado', label: 'Vendas por item', icon: ListOrdered },
+    { to: '/vendas/dashboard', label: 'Dashboard de vendas', icon: BarChart3 },
+  ],
+};
+const ADMIN = {
+  title: 'Administração',
+  links: [
+    { to: '/usuarios', label: 'Usuários', icon: Users },
+    { to: '/feriados', label: 'Feriados', icon: CalendarOff },
+  ],
+};
+
 export default function Layout() {
   const { user, logout, isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
-  const groups = isAdmin
-    ? [
-      ...GROUPS,
-      {
-        title: 'Administração',
-        links: [
-          { to: '/usuarios', label: 'Usuários', icon: Users },
-          { to: '/feriados', label: 'Feriados', icon: CalendarOff },
-        ],
-      },
-    ]
-    : GROUPS;
+  const groups = isAdmin ? [...GROUPS, ANALYSIS, ADMIN] : GROUPS;
 
   const handleLogout = () => {
     logout();
